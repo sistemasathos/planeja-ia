@@ -1,5 +1,6 @@
 import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
+import { appPath } from "@/lib/utils/app-path";
 
 /**
  * Classificador central de erros para o React Query.
@@ -79,8 +80,11 @@ async function handleAuthExpired() {
     } catch {
       /* noop — segue para o redirect mesmo se o signOut falhar */
     }
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.assign("/login");
+    if (typeof window !== "undefined") {
+      const login = appPath("/login");
+      if (!window.location.pathname.startsWith(login)) {
+        window.location.assign(login);
+      }
     }
   } finally {
     // Libera após pequeno atraso para permitir que outras queries em curso

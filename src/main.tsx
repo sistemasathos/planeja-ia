@@ -6,8 +6,13 @@ import { routeTree } from "./routeTree.gen";
 import { queryClient } from "@/lib/query-client";
 import "./index.css";
 
+/** Vite `base` (ex.: `/planeja-ia/` no GitHub Pages). Sem isso, rotas e redirects vão para `/login` na raiz do domínio. */
+const basepath =
+  import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
+
 const router = createRouter({
   routeTree,
+  basepath,
   context: { queryClient },
   defaultPreload: "intent",
   scrollRestoration: true,

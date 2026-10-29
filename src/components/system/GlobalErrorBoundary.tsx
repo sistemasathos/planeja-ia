@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, Home, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { appPath } from "@/lib/utils/app-path";
 
 interface GlobalErrorBoundaryProps {
   children: ReactNode;
@@ -70,7 +71,7 @@ export class GlobalErrorBoundary extends Component<
 
   private handleGoHome = () => {
     if (typeof window !== "undefined") {
-      window.location.assign("/");
+      window.location.assign(appPath("/"));
     }
   };
 

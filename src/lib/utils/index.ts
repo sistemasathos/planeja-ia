@@ -4,3 +4,4 @@
 export * from "./normalize";
 export * from "./cpf";
 export * from "./route-head";
+export * from "./app-path";

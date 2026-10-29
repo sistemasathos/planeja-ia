@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { routeHead } from "@/lib/utils/route-head";
+import { appPath } from "@/lib/utils/app-path";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkflowGuide } from "@/components/layout/WorkflowGuide";
@@ -167,7 +168,7 @@ function Dashboard() {
           description="Sincronize com o M2A, gere pautas consolidadas e mantenha as secretarias sempre atualizadas — sem retrabalho."
           cta="Ir para processos"
           onCtaClick={() => {
-            window.location.href = "/processos";
+            window.location.href = appPath("/processos");
           }}
         />
 

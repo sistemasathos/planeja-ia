@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
+import { appOriginPath } from "@/lib/utils/app-path";
 import {
   Building2,
   Eye,
@@ -158,7 +159,7 @@ function Login() {
       email: v.email,
       password: v.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/login`,
+        emailRedirectTo: appOriginPath("/login"),
         data: { nome: v.nome },
       },
     });
@@ -174,7 +175,7 @@ function Login() {
   async function onRecover(v: z.infer<typeof recoverSchema>) {
     setSubmitting(true);
     const { error } = await supabase.auth.resetPasswordForEmail(v.email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: appOriginPath("/reset-password"),
     });
     setSubmitting(false);
     if (error)

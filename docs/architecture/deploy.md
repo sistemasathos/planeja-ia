@@ -36,6 +36,14 @@ Ajuste o nome `planeja-ia` se preferir; o workflow usa `/${{ github.event.reposi
 
 Settings → **Pages** → Source: **GitHub Actions** (não “Deploy from branch”).
 
+Se o deploy falhar com `Failed to create deployment (status: 404)`, o site ainda não foi criado. Uma vez:
+
+```bash
+gh api -X POST repos/SEU_USUARIO/planeja-ia/pages -f build_type=workflow
+```
+
+Ou ative manualmente em Settings → Pages.
+
 ### 4. Disparar deploy
 
 Push na branch `main` ou Actions → **Deploy GitHub Pages** → Run workflow.
