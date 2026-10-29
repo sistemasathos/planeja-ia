@@ -82,6 +82,9 @@ const base = process.env.VITE_BASE_PATH || "/";
 
 export default defineConfig({
   base,
+  worker: {
+    format: "es",
+  },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __EXT_VERSION__: JSON.stringify(appVersion),
