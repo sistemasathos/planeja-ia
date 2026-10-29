@@ -81,8 +81,9 @@ manter o tráfego restrito por firewall **e** assinar com HMAC (já feito).
 | `PORT`                 | Porta HTTP do worker. Default `8080`                       |
 | `M2A_MAX_CONCURRENCY`  | Requests simultâneos no M2A. Default `2`                   |
 
-O login no M2A é fixo no portal da entidade: `/usuario/login/` com `perfil=1`.
-O worker não usa variáveis de ambiente para alternar para fornecedor.
+O GET inicial é `/usuario/login/` com `perfil=1`. Neste tenant o M2A responde
+`301` para `/autenticacao/login/`; o worker posta **nessa URL final**. Postar
+de novo em `/usuario/login/` perde o body no redirect e o login falha.
 
 ## 6. Endpoints
 
@@ -135,11 +136,11 @@ pm2 restart planeja-m2a-worker      # ou: docker compose up -d --build
 
 ## 8. Troubleshooting
 
-- **`M2A_LOGIN_FAILED`**: usuário/senha errados, perfil sem permissão, ou CAPTCHA.
-  Veja `pm2 logs planeja-m2a-worker`. Se aparecer "portal de fornecedores",
-  confirme que o log mostra `[m2a-login] start ENTIDADE ... perfil=1`. Se não
-  mostrar, a VPS ainda está rodando código antigo; rode `git pull`,
-  `npm install --omit=dev` e `pm2 restart planeja-m2a-worker --update-env`.
+- **`M2A_LOGIN_FAILED`**: usuário/senha errados, CAPTCHA, ou POST na URL errada.
+  O log deve mostrar `postPath=/autenticacao/login/` (ou a URL do form) e, se
+  der certo, cookie `sessionid`. Se `GET finalUrl` for `/autenticacao/login/`
+  mas o POST for `/usuario/login/`, a VPS está com build antiga — `git pull` e
+  `pm2 restart planeja-m2a-worker`.
 - **`401 bad_signature`** vindo da edge function: `SHARED_SECRET` divergente
   entre a VPS e o Lovable Cloud.
 - **`stale_timestamp`**: relógio da VPS muito fora de hora —

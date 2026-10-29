@@ -20,9 +20,9 @@ export const config = {
     baseUrl: required("M2A_BASE_URL").replace(/\/+$/, ""),
     username: required("M2A_USERNAME"),
     password: required("M2A_PASSWORD"),
-    // Login é sempre no portal da entidade/órgão público.
-    // Não lemos mais M2A_LOGIN_PATH/M2A_LOGIN_PROFILE do .env para evitar
-    // cair acidentalmente no portal de fornecedores por variável antiga do PM2.
+    // GET inicial no portal da entidade. Neste tenant /usuario/login/ responde
+    // 301 → /autenticacao/login/; o cliente POSTA na URL final do form, não
+    // no caminho de partida (POST+/301 viraria GET e o login falharia).
     loginPath: M2A_ENTITY_LOGIN_PATH,
     loginProfile: M2A_ENTITY_LOGIN_PROFILE,
     maxConcurrency: Number(process.env.M2A_MAX_CONCURRENCY ?? 2),

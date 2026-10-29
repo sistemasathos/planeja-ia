@@ -15,6 +15,9 @@ dist
 .env.*
 !.env.example
 
+# Cache local da CLI Supabase
+supabase/.temp/
+
 # Backups operacionais (PII / volume — restaurar via tools/ localmente)
 database/database-backup.json
 database/groups/

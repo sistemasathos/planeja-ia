@@ -70,6 +70,19 @@ function absoluteUrl(path) {
   return `${config.m2a.baseUrl}${assertSafePath(path)}`;
 }
 
+/** Path (+ query) de uma URL absoluta ou relativa ao portal. */
+function pathFromUrl(url, fallback) {
+  const raw = String(url || "").trim();
+  if (!raw) return fallback;
+  try {
+    const u = new URL(raw, `${config.m2a.baseUrl}/`);
+    const path = `${u.pathname}${u.search || ""}`;
+    return path.startsWith("/") ? path : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function normalizeCacheUrl(url) {
   return absoluteUrl(url).replace(/#.*$/, "");
 }
@@ -150,52 +163,61 @@ class M2aClient {
         console.error(`[m2a-login] GET form falhou: ${err.message}`);
         throw new Error(`M2A_LOGIN_FAILED: GET ${config.m2a.loginPath} → ${err.message}`);
       }
-      const getFinalUrl = getRes.request?.res?.responseUrl || "";
+      const getFinalUrl = getRes.request?.res?.responseUrl || loginUrl;
+      const getFinalPath = pathFromUrl(getFinalUrl, config.m2a.loginPath);
       console.log(`[m2a-login] GET status=${getRes.status} finalUrl=${getFinalUrl} bytes=${(getRes.data || "").length}`);
 
       const $ = cheerio.load(getRes.data || "");
-      const csrf =
-        $('input[name="csrfmiddlewaretoken"]').attr("value") ||
-        $('input[name="_token"]').attr("value") ||
-        "";
-      const profileOptions = $('input[name="perfil"]')
+      // Form de senha (não o de "esqueci senha", que também tem csrf/perfil).
+      const $form = $("form")
+        .filter((_, el) => $(el).find('input[name="password"]').length > 0)
+        .first();
+      const action = ($form.attr("action") || "").trim();
+      const postPath = action
+        ? pathFromUrl(action, getFinalPath)
+        : getFinalPath;
+      const form = new URLSearchParams();
+      $form.find("input").each((_, el) => {
+        const name = $(el).attr("name");
+        if (!name) return;
+        const type = String($(el).attr("type") || "text").toLowerCase();
+        if (type === "submit" || type === "button" || type === "image") return;
+        form.set(name, $(el).attr("value") || "");
+      });
+      form.set("username", config.m2a.username);
+      form.set("password", config.m2a.password);
+      if (!form.get("perfil")) form.set("perfil", config.m2a.loginProfile);
+
+      const csrf = form.get("csrfmiddlewaretoken") || "";
+      const profileOptions = $form
+        .find('input[name="perfil"]')
         .map((_, el) => {
           const value = $(el).attr("value") || "";
-          const label = $(el).closest("label").text().replace(/\s+/g, " ").trim();
-          const checked = $(el).is("[checked]") ? " checked" : "";
-          return `${value}:${label || "sem label"}${checked}`;
+          const type = $(el).attr("type") || "hidden";
+          return `${value} (${type})`;
         })
         .get()
         .join(" | ");
       console.log(`[m2a-login] csrf ${csrf ? `presente(len=${csrf.length})` : "AUSENTE"}`);
-      console.log(`[m2a-login] perfis no form: ${profileOptions || "(nenhum)"}; enviando perfil=${config.m2a.loginProfile}`);
+      console.log(`[m2a-login] form action="${action || "(vazio → URL do GET)"}" postPath=${postPath} perfis=${profileOptions || "(nenhum)"}`);
       const cookieStr = await this.jar.getCookieString(config.m2a.baseUrl);
       console.log(`[m2a-login] cookies pré-POST: ${cookieStr || "(vazio)"}`);
-
-      const form = new URLSearchParams();
-      if (csrf) {
-        form.set("csrfmiddlewaretoken", csrf);
-      }
-      form.set("perfil", config.m2a.loginProfile);
-      form.set("username", config.m2a.username);
-      form.set("password", config.m2a.password);
-      form.set("login-form", "");
-      console.log(`[m2a-login] POST payload: perfil=${form.get("perfil")} username=${form.get("username")} password=(oculta) csrf=${csrf ? "sim" : "não"} login-form=sim`);
+      console.log(`[m2a-login] POST payload: perfil=${form.get("perfil")} username=${form.get("username")} password=(oculta) csrf=${csrf ? "sim" : "não"} campos=${[...form.keys()].join(",")}`);
 
       let postRes;
       try {
-        postRes = await this.http.post(config.m2a.loginPath, form, {
+        postRes = await this.http.post(postPath, form, {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
             "Cache-Control": "max-age=0",
             "Upgrade-Insecure-Requests": "1",
             Origin: config.m2a.baseUrl,
-            Referer: loginUrl,
+            Referer: getFinalUrl,
           },
         });
       } catch (err) {
         console.error(`[m2a-login] POST falhou: ${err.message}`);
-        throw new Error(`M2A_LOGIN_FAILED: POST ${config.m2a.loginPath} → ${err.message}`);
+        throw new Error(`M2A_LOGIN_FAILED: POST ${postPath} → ${err.message}`);
       }
 
       const html = String(postRes.data || "");
@@ -205,17 +227,13 @@ class M2aClient {
       console.log(`[m2a-login] cookies pós-POST: ${cookieAfter || "(vazio)"}`);
 
       if (M2aClient.isLoginPage(html, finalUrl)) {
-        // Extrai mensagem de erro do form (Django costuma renderizar em .errorlist / .alert)
         const $$ = cheerio.load(html);
         const errMsg =
           $$(".errorlist").first().text().trim() ||
           $$(".alert").first().text().trim() ||
           $$(".help-block").first().text().trim() ||
           "";
-        console.error(`[m2a-login] FALHOU — ainda na página de login. perfil=${config.m2a.loginProfile} finalUrl=${finalUrl} msg="${errMsg}"`);
-        if (/portal de fornecedores/i.test(errMsg)) {
-          console.error(`[m2a-login] diagnóstico: o worker atual força /usuario/login/ com perfil=1. Se este log não mostra "start ENTIDADE" ou "perfil=1", a VPS ainda está rodando código antigo; faça git pull, npm install e pm2 restart planeja-m2a-worker --update-env.`);
-        }
+        console.error(`[m2a-login] FALHOU — ainda na página de login. perfil=${form.get("perfil")} postPath=${postPath} finalUrl=${finalUrl} msg="${errMsg}"`);
         const snippet = html.replace(/\s+/g, " ").slice(0, 400);
         console.error(`[m2a-login] snippet: ${snippet}`);
         throw new Error(
