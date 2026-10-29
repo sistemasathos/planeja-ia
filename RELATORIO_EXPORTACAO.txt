@@ -1,0 +1,32 @@
+RELATÓRIO DE EXPORTAÇÃO DO SISTEMA
+
+Gerado em: 2026-10-29T18:10:30.097Z
+Versão: 1.8.17
+Arquivos do projeto: 404 (2434491 bytes)
+
+Banco de dados (por prioridade):
+- profiles: 9 linha(s)
+- user_roles: 9 linha(s)
+- secretarias: 25 linha(s)
+- secretaria_contatos: 0 linha(s)
+- fornecedores_prepostos: 54 linha(s)
+- numeracao: 12 linha(s)
+- m2a_unidades_gestoras: 12 linha(s)
+- m2a_servidores: 31 linha(s)
+- m2a_servidor_unidade: 37 linha(s)
+- processos: 53 linha(s)
+- contratos: 1165 linha(s)
+- contrato_itens: 17029 linha(s)
+- contrato_item_dotacoes: 17029 linha(s)
+- contrato_atores: 0 linha(s)
+- contrato_documentos: 1225 linha(s)
+- m2a_atas: 92 linha(s)
+- m2a_itens: 2558 linha(s)
+- m2a_contratos_snapshot: 1736 linha(s)
+- m2a_envio_preferencias: 14 linha(s)
+
+Storage:
+Sem buckets.
+
+Avisos:
+Nenhum.

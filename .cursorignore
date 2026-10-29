@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.nuxt/
+.cache/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.log
+.DS_Store

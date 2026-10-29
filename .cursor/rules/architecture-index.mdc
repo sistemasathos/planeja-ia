@@ -1,0 +1,12 @@
+
+---
+description: Consultar índice arquitetural antes de explorar o código
+alwaysApply: true
+---
+
+- Ler primeiro `docs/architecture/overview.md` e o doc do domínio (`modules`, `dependencies`, `critical-flows`) relacionado à tarefa.
+- Graphify: usar se disponível; se indisponível, confiar em `docs/architecture/` e buscas no repositório — não simular grafo.
+- Identificar arquivos pelo mapa em `modules.md` e rotas em `src/routeTree.gen.ts` antes de glob amplo.
+- Preferir `grep`/referências a abrir arquivos inteiros; ler trechos só para lacunas ou lógica de negócio não descrita nos docs.
+- Após alterações que mudem rotas, tabelas, exports públicos, endpoints worker ou edge functions: atualizar incrementalmente os arquivos afetados em `docs/architecture/` e a data em `index-status.md`.
+- Não reindexar o repositório inteiro por padrão; expandir cobertura apenas quando o usuário pedir ou o índice estiver inconsistente com o código verificado.

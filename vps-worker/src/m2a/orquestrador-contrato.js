@@ -1,0 +1,463 @@
+// Orquestrador equivalente a processarContratoCompleto.
+// Emite eventos via callback `onProgress(etapa, mensagem, extra)`.
+
+import { assertNumericId } from "./utils.js";
+import {
+  buscarIdContratoPorNumero, criarCabecalhoContrato,
+  vincularFiscal, vincularGestor, vincularPreposto,
+  adicionarItensAoContrato, atualizarQuantidadesItens,
+  incluirDotacao, configurarDocumentos,
+  verificarAtorVinculado, invalidateContratoDocCache,
+} from "./contrato.js";
+import { listarItensContrato } from "./atas-consumo.js";
+import { saldosPorSecretaria, invalidateSaldoAtaCache } from "./atas-saldos-por-secretaria.js";
+import { normSec } from "./norm-sec.js";
+import { WORKER_BUILD } from "../build-info.js";
+
+
+class CanceladoError extends Error {
+  constructor() {
+    super("Envio cancelado pelo usuário.");
+    this.code = "M2A_CANCELADO";
+  }
+}
+
+function toNumberBR(value) {
+  return Number(String(value ?? "0").replace(/\./g, "").replace(",", ".")) || 0;
+}
+
+
+function logTable(label, rows, limit = 500) {
+  const list = Array.isArray(rows) ? rows : [];
+  console.log(`[m2a-orq-contrato] ${label}: ${list.length} registro(s)`);
+  if (!list.length) return;
+  console.table(list.slice(0, limit));
+  if (list.length > limit) {
+    console.log(`[m2a-orq-contrato] ${label}: ${list.length - limit} registro(s) omitidos`);
+  }
+}
+
+function shortText(value, max = 160) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function extractProcessoIdFromUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return raw;
+  return raw.match(/\/processo_administrativo\/(\d+)\/?/)?.[1] ?? null;
+}
+
+function contratoUrl(contratoId) {
+  return contratoId ? `${process.env.M2A_BASE_URL?.replace(/\/+$/, "") || "http://precodereferencia.m2atecnologia.com.br"}/contratos/${contratoId}/` : null;
+}
+
+function errorMessage(err) {
+  return String(err?.message || err || "erro desconhecido");
+}
+
+export async function processarContratoCompleto(payload, onProgress = () => {}, options = {}) {
+  const { contratoId, m2aProcessoUrl, m2aAtaId, contrato, dadosM2A, itens, dadosDotacao } = payload;
+  const signal = options.signal ?? null;
+  const checkCancel = () => {
+    if (signal?.aborted) throw new CanceladoError();
+  };
+
+  const numeroContrato = contrato?.numero_contrato || contrato?.numero;
+
+  console.group(`[m2a-orq-contrato] iniciar contrato local=${contratoId} número=${numeroContrato}`);
+  console.log("[m2a-orq-contrato] payload recebido:", {
+    contratoId,
+    numeroContrato,
+    m2aProcessoUrl,
+    m2aAtaId,
+    m2a_contrato_id: contrato?.m2a_contrato_id,
+    data: contrato?.data,
+    data_fim: contrato?.data_fim,
+    unidade_gestora: dadosM2A?.unidade_gestora,
+    fiscal_id: dadosM2A?.fiscal_id,
+    gestor_id: dadosM2A?.gestor_id,
+    preposto_id: dadosM2A?.preposto_id,
+    preposto_nome: dadosM2A?.preposto_nome ?? contrato?.preposto,
+    dotacao: dadosDotacao ?? dadosM2A?.dotacao ?? null,
+    totalItens: (itens ?? dadosM2A?.itens ?? []).length,
+  });
+  logTable(
+    "itens recebidos para envio ao portal",
+    (itens ?? dadosM2A?.itens ?? []).map((item, index) => ({
+      index,
+      numero: item?.numero ?? item?.numero_item,
+      ordem_item: item?.ordem_item,
+      m2a_item_id: item?.m2a_item_id,
+      ata_item_id: item?.ata_item_id ?? item?.m2a_ata_item_id ?? item?.ataItemId,
+      quantidade: item?.quantidade,
+      descricao: shortText(item?.descricao ?? item?.especificacao, 180),
+    })),
+  );
+
+  const progress = (etapa, mensagem, extra = {}) =>
+    onProgress({ contratoId, etapa, mensagem, ...extra });
+
+  assertNumericId("m2aAtaId", String(m2aAtaId));
+  assertNumericId("dadosM2A.unidade_gestora", String(dadosM2A.unidade_gestora));
+  assertNumericId("dadosM2A.fiscal_id", String(dadosM2A.fiscal_id));
+  assertNumericId("dadosM2A.gestor_id", String(dadosM2A.gestor_id));
+  assertNumericId("dadosM2A.preposto_id", dadosM2A.preposto_id, false);
+
+  let m2aInternalId = contrato.m2a_contrato_id || null;
+
+  // Envolve TODO o pipeline em try/catch para anexar o m2a_contrato_id ao
+  // erro. Assim, se falhar no meio (ex.: 500 no gestor após criar contrato),
+  // o front salva o ID e a próxima tentativa resume de onde parou — os
+  // vínculos duplicados são tratados como sucesso pelo ensureActorLinked.
+  try {
+    checkCancel();
+    progress("recuperar_id", "Verificando se o contrato já existe na M2A...");
+    if (!m2aInternalId) {
+      try {
+        m2aInternalId = await buscarIdContratoPorNumero(m2aAtaId, numeroContrato, m2aProcessoUrl, {
+          processoId: extractProcessoIdFromUrl(m2aProcessoUrl),
+        });
+      } catch (err) {
+        const msg = String(err?.message || err || "");
+        console.warn(`[m2a-orq-contrato] verificação prévia falhou: ${msg}`);
+        throw new Error(`Falha ao verificar contrato existente na M2A: ${msg}`);
+      }
+    }
+
+    // Contrato pré-existente → vale checar vínculos antes do POST (retomada).
+    // Contrato novo → nada existe ainda, a checagem prévia só desperdiça GETs.
+    const contratoJaExistia = Boolean(m2aInternalId);
+
+    if (!m2aInternalId) {
+      checkCancel();
+      progress("criar_contrato", "Módulo 1: Criando cabeçalho...");
+      const created = await criarCabecalhoContrato(m2aAtaId, {
+        numero: numeroContrato,
+        objeto: contrato.objeto,
+        data: contrato.data,
+        data_fim: contrato.data_fim,
+        unidade_gestora: dadosM2A.unidade_gestora,
+      }, {
+        m2aProcessoUrl,
+        processoId: extractProcessoIdFromUrl(m2aProcessoUrl),
+      });
+      if (!created.ok) throw new Error("Falha ao criar cabeçalho do contrato.");
+      m2aInternalId =
+        created.contratoId ||
+        (await buscarIdContratoPorNumero(m2aAtaId, numeroContrato, m2aProcessoUrl, {
+          deepSearch: true,
+          processoId: extractProcessoIdFromUrl(m2aProcessoUrl),
+        }));
+    }
+    if (!m2aInternalId) throw new Error("Não foi possível obter o ID interno do contrato.");
+
+    const errosParciais = [];
+    const tentarEtapa = async (etapa, rotulo, fn, opts = {}) => {
+      checkCancel();
+      try {
+        return await fn();
+      } catch (err) {
+        if (err?.code === "M2A_CANCELADO") throw err;
+        const msg = errorMessage(err);
+        const item = { etapa, rotulo, mensagem: msg };
+        errosParciais.push(item);
+        progress(etapa, `Falha em ${rotulo}: ${msg}`, {
+          aviso: true,
+          m2a_contrato_id: m2aInternalId,
+        });
+        if (opts.critical) throw err;
+        return null;
+      }
+    };
+
+    progress("vincular_atores", "Módulo 3: Vinculando Fiscal, Gestor e Preposto...", {
+      m2a_contrato_id: m2aInternalId,
+    });
+
+    if (dadosM2A.fiscal_id) {
+      await tentarEtapa("vincular_atores", "vínculo do fiscal", () =>
+        vincularFiscal(m2aInternalId, dadosM2A.fiscal_id, contrato.data, {
+          precheck: contratoJaExistia,
+        }),
+      );
+    }
+    if (dadosM2A.gestor_id) {
+      await tentarEtapa("vincular_atores", "vínculo do gestor", () =>
+        vincularGestor(m2aInternalId, dadosM2A.gestor_id, contrato.data, {
+          precheck: contratoJaExistia,
+        }),
+      );
+    }
+
+    const nomePreposto = String(dadosM2A.preposto_nome ?? contrato.preposto ?? "").trim();
+    if (!dadosM2A.preposto_id && !nomePreposto) {
+      throw new Error("Preposto não informado no payload.");
+    }
+    if (dadosM2A.preposto_id || nomePreposto) {
+      await tentarEtapa("vincular_atores", "vínculo do preposto", () =>
+        vincularPreposto(m2aInternalId, nomePreposto, contrato.data, dadosM2A.preposto_id, {
+          precheck: contratoJaExistia,
+        }),
+      );
+    }
+
+
+    const itensPayload = itens ?? dadosM2A.itens ?? [];
+    const avisos = [];
+    const coletarAvisos = (etapa, lista) => {
+      for (const msg of lista ?? []) {
+        avisos.push({ etapa, mensagem: msg });
+        progress(etapa, `Aviso: ${msg}`, { aviso: true });
+      }
+    };
+
+    progress("incluir_itens", "Módulo 4: Adicionando itens da Ata ao contrato...");
+    const addResult = await tentarEtapa("incluir_itens", "inclusão de itens", () =>
+      adicionarItensAoContrato(m2aInternalId, itensPayload),
+    );
+    coletarAvisos("incluir_itens", addResult?.avisos);
+
+    // Revalidação de saldo: DESLIGADA por padrão no envio de contratos.
+    // Varrer participantes/itens/contratos da ata a cada contrato era a maior
+    // fonte de lentidão. A validação de saldo já é feita na importação
+    // (pré-geração) e na sincronização M2A.
+    // Só roda se AMBOS forem verdadeiros:
+    //   - env M2A_REVALIDAR_SALDO=1 (kill-switch de infraestrutura)
+    //   - payload.revalidarSaldo === true (pedido explícito do chamador)
+    const envPermiteRevalidar = process.env.M2A_REVALIDAR_SALDO === "1";
+    const forcarRevalidacaoSaldo = envPermiteRevalidar && payload.revalidarSaldo === true;
+    const secretariaNome = String(dadosM2A?.secretaria_nome ?? "").trim();
+    console.log(
+      `[m2a-orq-contrato] build=${WORKER_BUILD} revalidacaoSaldo=${forcarRevalidacaoSaldo ? "ON" : "OFF"} (env=${envPermiteRevalidar}, payload=${payload.revalidarSaldo === true})`,
+    );
+    if (forcarRevalidacaoSaldo && secretariaNome && itensPayload.length > 0) {
+
+
+
+      try {
+        const processoId = extractProcessoIdFromUrl(m2aProcessoUrl);
+        if (forcarRevalidacaoSaldo) invalidateSaldoAtaCache(m2aAtaId, processoId);
+        const saldos = await saldosPorSecretaria(m2aAtaId, {
+          forceRefresh: forcarRevalidacaoSaldo,
+          origem: "envio-contrato",
+          processoId,
+        });
+
+        const secKey = normSec(secretariaNome);
+        const sec = saldos.secretarias.find((s) => s.secretariaKey === secKey);
+        if (!sec) {
+          console.warn(
+            `[m2a-orq-contrato] revalidação: secretaria "${secretariaNome}" (key="${secKey}") não encontrada entre participantes da ata ${m2aAtaId}`,
+          );
+        } else {
+          const excedentes = [];
+          for (const it of itensPayload) {
+            const numero = String(it.numero ?? it.numero_item ?? "").trim();
+            if (!numero) continue;
+            const qtdEnviada = Number(String(it.quantidade ?? "0").replace(/\./g, "").replace(",", "."));
+            const hit = sec.itens.find((x) => String(x.numero) === numero);
+            if (!hit || hit.saldo == null) continue;
+            if (qtdEnviada > hit.saldo + 1e-6) {
+              excedentes.push({
+                numero,
+                descricao: hit.descricao,
+                qtdEnviada,
+                saldo: hit.saldo,
+                cota: hit.cota,
+                consumido: hit.consumido,
+                contratosConsumidos: (hit.contratosConsumidores ?? []).map((c) => ({
+                  ...c,
+                  contratoUrl: contratoUrl(c.contratoId),
+                })),
+              });
+            }
+          }
+          if (excedentes.length > 0) {
+            console.error("[m2a-orq-contrato] SALDO_INSUFICIENTE_RUNTIME", excedentes);
+            const err = new Error(
+              `Saldo insuficiente em ${excedentes.length} item(s) no momento do envio. ` +
+                `Refaça a validação e ajuste as quantidades.`,
+            );
+            err.code = "SALDO_INSUFICIENTE_RUNTIME";
+            err.excedentes = excedentes;
+            throw err;
+          }
+        }
+      } catch (err) {
+        if (err?.code === "SALDO_INSUFICIENTE_RUNTIME") throw err;
+        console.warn(`[m2a-orq-contrato] revalidação de saldo falhou (segue mesmo assim): ${err?.message || err}`);
+      }
+    }
+
+    progress("atualizar_quantidades", "Módulo 5: Atualizando quantidades dos itens...");
+    const qtdResult = await tentarEtapa("atualizar_quantidades", "atualização de quantidades", () =>
+      atualizarQuantidadesItens(m2aInternalId, itensPayload),
+    );
+    coletarAvisos("atualizar_quantidades", qtdResult?.avisos);
+
+    const problemasQuantidade = qtdResult ? (qtdResult.avisos ?? []) : ["Atualização de quantidades não executada."];
+    const quantidadesOk = problemasQuantidade.length === 0;
+    if (!quantidadesOk) {
+      errosParciais.push({
+        etapa: "atualizar_quantidades",
+        rotulo: "quantidades dos itens",
+        mensagem:
+          `Falha ao atualizar quantidade de ${problemasQuantidade.length} item(s). ` +
+          `Detalhes: ${problemasQuantidade.join(" | ")}`,
+      });
+    }
+
+    invalidateSaldoAtaCache(m2aAtaId, extractProcessoIdFromUrl(m2aProcessoUrl));
+
+    const dotacaoPayload = dadosDotacao ?? dadosM2A.dotacao ?? null;
+    if (quantidadesOk) {
+      progress("incluir_dotacoes", "Módulo 6: Incluindo dotação orçamentária...");
+      await tentarEtapa("incluir_dotacoes", "inclusão de dotação orçamentária", () =>
+        incluirDotacao(m2aInternalId, dotacaoPayload),
+      );
+    } else {
+      progress("incluir_dotacoes", "Dotação pulada até as quantidades dos itens serem confirmadas.", {
+        aviso: true,
+        m2a_contrato_id: m2aInternalId,
+      });
+    }
+
+    progress("enviar_documentos", "Módulo 7: Configurando documentos da entidade...");
+    const documentosResult = await tentarEtapa("enviar_documentos", "configuração de documentos", () =>
+      configurarDocumentos(m2aInternalId, contrato.data),
+    ) ?? { documentosM2A: [] };
+
+    // --- Auditoria final ---------------------------------------------------
+    // Antes de marcar o contrato como "parcialmente processado", reconfere no
+    // portal o que realmente ficou gravado. Muitos 5xx do M2A acontecem DEPOIS
+    // de a gravação ter sido efetivada — sem essa reconferência o contrato
+    // aparecia como erro mesmo estando correto.
+    let errosConfirmados = errosParciais;
+    if (errosParciais.length > 0) {
+      progress("auditoria", "Reconferindo no portal o que já foi gravado...", {
+        m2a_contrato_id: m2aInternalId,
+      });
+      invalidateContratoDocCache(m2aInternalId);
+
+      const resolvidos = [];
+      const pendentes = [];
+
+      // Itens/quantidades: lê a tabela real do contrato uma única vez.
+      const precisaAuditarItens = errosParciais.some(
+        (e) => e.etapa === "incluir_itens" || e.etapa === "atualizar_quantidades",
+      );
+      let itensNoPortal = null;
+      if (precisaAuditarItens) {
+        try {
+          itensNoPortal = await listarItensContrato(m2aInternalId);
+        } catch (err) {
+          console.warn(`[m2a-orq-contrato] auditoria de itens falhou: ${errorMessage(err)}`);
+        }
+      }
+      const itensConferem = (() => {
+        if (!Array.isArray(itensNoPortal) || itensNoPortal.length === 0) return false;
+        return itensPayload.every((it) => {
+          const numero = String(it.numero ?? it.numero_item ?? "").trim();
+          if (!numero) return true;
+          const hit = itensNoPortal.find((x) => String(x.numero) === numero);
+          if (!hit) return false;
+          const esperado = toNumberBR(it.quantidade);
+          return Math.abs((hit.quantidadeContratada ?? 0) - esperado) < 1e-6;
+        });
+      })();
+
+      for (const erro of errosParciais) {
+        let resolvido = false;
+        try {
+          if (erro.etapa === "vincular_atores") {
+            if (erro.rotulo.includes("fiscal")) {
+              resolvido = await verificarAtorVinculado(m2aInternalId, "fiscal", dadosM2A.fiscal_id);
+            } else if (erro.rotulo.includes("gestor")) {
+              resolvido = await verificarAtorVinculado(m2aInternalId, "gestor", dadosM2A.gestor_id);
+            } else if (erro.rotulo.includes("preposto")) {
+              resolvido = await verificarAtorVinculado(
+                m2aInternalId, "preposto", dadosM2A.preposto_id, nomePreposto,
+              );
+            }
+          } else if (erro.etapa === "incluir_itens" || erro.etapa === "atualizar_quantidades") {
+            resolvido = itensConferem;
+          } else if (erro.etapa === "enviar_documentos") {
+            resolvido = (documentosResult?.documentosM2A ?? []).length > 0;
+          }
+        } catch (err) {
+          console.warn(`[m2a-orq-contrato] auditoria de "${erro.rotulo}" falhou: ${errorMessage(err)}`);
+        }
+        if (resolvido) {
+          resolvidos.push(erro);
+          progress("auditoria", `Confirmado no portal apesar do erro: ${erro.rotulo}.`, {
+            aviso: true,
+            m2a_contrato_id: m2aInternalId,
+          });
+        } else {
+          pendentes.push(erro);
+        }
+      }
+
+      console.log("[m2a-orq-contrato] auditoria final:", {
+        contratoId,
+        m2a_contrato_id: m2aInternalId,
+        resolvidos: resolvidos.map((e) => e.rotulo),
+        pendentes: pendentes.map((e) => e.rotulo),
+      });
+      errosConfirmados = pendentes;
+      for (const e of resolvidos) {
+        avisos.push({
+          etapa: e.etapa,
+          mensagem: `${e.rotulo}: erro reportado pelo portal, mas a gravação foi confirmada na auditoria.`,
+        });
+      }
+    }
+
+    if (errosConfirmados.length > 0) {
+      const err = new Error(
+        `Contrato parcialmente processado na M2A (ID ${m2aInternalId}), mas ${errosConfirmados.length} etapa(s) falharam. ` +
+          `Reenvie para retomar sem recriar. Detalhes: ${errosConfirmados.map((e) => `${e.rotulo}: ${e.mensagem}`).join(" | ")}`,
+      );
+      err.code = "M2A_CONTRATO_PARCIAL";
+      err.m2a_contrato_id = m2aInternalId;
+      err.errosParciais = errosConfirmados;
+      throw err;
+    }
+
+
+    const mensagemFinal = avisos.length
+      ? `Contrato integrado com ${avisos.length} aviso(s) — verifique itens pulados.`
+      : "Contrato integrado com itens, dotação, atores e documentos!";
+
+    progress("concluido", mensagemFinal, {
+      sucesso: true,
+      status: "concluido",
+      m2a_contrato_id: m2aInternalId,
+      documentosM2A: documentosResult.documentosM2A ?? [],
+      avisos,
+    });
+
+    console.log("[m2a-orq-contrato] concluído", {
+      contratoId,
+      numeroContrato,
+      m2a_contrato_id: m2aInternalId,
+      documentos: documentosResult.documentosM2A?.length ?? 0,
+      avisos,
+    });
+    console.groupEnd();
+    return { m2a_contrato_id: m2aInternalId, documentosM2A: documentosResult.documentosM2A ?? [], avisos };
+  } catch (err) {
+    // Anexa o m2a_contrato_id ao erro para que o front salve e a próxima
+    // tentativa continue do ponto onde parou (buscarIdContratoPorNumero
+    // acha o contrato e o pipeline retoma vínculos/itens/dotação/docs).
+    if (m2aInternalId && !err.m2a_contrato_id) {
+      err.m2a_contrato_id = m2aInternalId;
+    }
+    console.error(
+      `[m2a-orq-contrato] falha após criar contrato m2a_id=${m2aInternalId ?? "-"}: ${err?.message || err}`,
+    );
+    console.groupEnd();
+    throw err;
+  }
+}

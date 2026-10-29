@@ -1,0 +1,636 @@
+// =====================================================================
+// Motor do fluxo de PROCESSO COMUM (não-SRP) no portal M2A.
+//
+// Diferenças vs. processo-srp.js:
+//   - Cada secretaria participante recebe sua PRÓPRIA DFD (não vira IRP).
+//   - A DFD NÃO é "registro de preço" (sem is_registro_de_preco=on).
+//   - Cada DFD recebe sua dotação via solicitacao_despesa_atividade.
+//   - O processo administrativo só nasce DEPOIS, via gerar_processo
+//     chamado a partir da DFD da gerenciadora.
+//   - Outras DFDs são vinculadas via adicionar_solicitacoes.
+//   - Itens do processo são reordenados para refletir a ordem da
+//     planilha original.
+// =====================================================================
+
+import { m2a } from "../m2a-client.js";
+import { loadDoc, sleep, normalizeObjetoCaixaAlta } from "./utils.js";
+
+const DFD_INCLUIR_PATH = "/gestao_compras/formalizacao_demanda/incluir/";
+const DFD_TABELA_PATH =
+  "/gestao_compras/formalizacao_demanda/tabela/?page_size=1000";
+const SOLIC_DESPESA_INCLUIR = (dfdId) =>
+  `/gestao_compras/solicitacao_despesa_atividade/incluir/${dfdId}/`;
+const GERAR_PROCESSO = (dfdId) =>
+  `/gestao_compras/formalizacao_demanda/gerar_processo/${dfdId}/`;
+const DFD_DETAIL = (dfdId) =>
+  `/gestao_compras/formalizacao_demanda/${dfdId}/?`;
+const ADICIONAR_SOLICITACOES = (processoId) =>
+  `/processo_administrativo/adicionar_solicitacoes/${processoId}/`;
+const TABELA_ITENS_PROCESSO = (processoId) =>
+  `/processo_administrativo/item/tabela/${processoId}/?page_size=1000`;
+const ALTERAR_SEQUENCIAL_ITEM = (itemId) =>
+  `/processo_administrativo/item/alterar_sequencial/${itemId}/`;
+
+// ---------------------------------------------------------------------
+// Criação de DFD COMUM (sem is_registro_de_preco)
+// ---------------------------------------------------------------------
+export async function criarDFDComum(payload) {
+  const objeto = normalizeObjetoCaixaAlta(payload.objeto);
+  if (!objeto) throw new Error("DFD comum: objeto obrigatório");
+
+  const csrf = await m2a.getCsrf(DFD_INCLUIR_PATH, { force: true });
+
+  const body = new URLSearchParams();
+  body.set("csrfmiddlewaretoken", csrf);
+  body.set("descricao", objeto);
+  body.set("fundamentacao", "2");
+  // NOTA: NÃO incluímos is_registro_de_preco.
+  body.set("data", String(payload.data || ""));
+  body.set("ano_orcamento", String(payload.ano_orcamento || ""));
+  body.set("orgao_solicitante", String(payload.orgao_solicitante || ""));
+  body.set("unidade_orcamentaria", String(payload.unidade_orcamentaria || ""));
+  body.set("responsavel_dfd", String(payload.responsavel_dfd || ""));
+  body.set(
+    "comissao_planejamento",
+    String(payload.comissao_planejamento || ""),
+  );
+  body.set("_salvar", "");
+
+  // Log do payload enviado (sem CSRF) para debug de "escolha válida"
+  const payloadDebug = {};
+  for (const [k, v] of body.entries()) {
+    if (k === "csrfmiddlewaretoken") continue;
+    payloadDebug[k] = v;
+  }
+  console.log(
+    `[criarDFDComum] POST payload=${JSON.stringify(payloadDebug)}`,
+  );
+
+  const res = await m2a.request("POST", DFD_INCLUIR_PATH, {
+    body: body.toString(),
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${m2a.http.defaults.baseURL || ""}${DFD_INCLUIR_PATH}`,
+    },
+  });
+
+  if (res.status >= 400) {
+    throw new Error(`DFD comum: portal retornou status ${res.status}`);
+  }
+  const $ = loadDoc(res.html);
+  // Coleta erros do formulário em TODOS os formatos conhecidos do portal
+  const erros = new Set();
+  $(".errorlist li, .errorlist, .alert-danger, .alert-error, .invalid-feedback, .help-block.text-danger")
+    .each((_, el) => {
+      const t = $(el).text().replace(/\s+/g, " ").trim();
+      if (t) erros.add(t);
+    });
+  // django form non_field_errors
+  $("ul.errorlist.nonfield li").each((_, el) => {
+    const t = $(el).text().replace(/\s+/g, " ").trim();
+    if (t) erros.add(t);
+  });
+
+  const finalUrl = String(res.finalUrl || "");
+  const dfdId = finalUrl.match(
+    /\/gestao_compras\/formalizacao_demanda\/(\d+)\/?/,
+  )?.[1];
+
+  // Se voltou para /incluir/ é porque NÃO criou (form re-renderizado).
+  // NUNCA fazer fallback pegando a "última DFD da tabela" — isso já causou
+  // bug grave de mesclar item da SMA na DFD do INF.
+  if (!dfdId) {
+    const errStr = erros.size
+      ? Array.from(erros).join(" | ")
+      : `sem mensagem de erro identificável (finalUrl=${finalUrl}, bytes=${(res.html || "").length})`;
+    console.error(`[criarDFDComum] FALHA: ${errStr}`);
+
+    // Mapeia erros por campo (Django re-renderiza o form com .errorlist
+    // dentro do .form-group do campo inválido).
+    const errosPorCampo = [];
+    $("select[name], input[name]").each((_, el) => {
+      const $el = $(el);
+      const name = $el.attr("name");
+      if (!name || name === "csrfmiddlewaretoken") return;
+      const $group = $el.closest(".form-group, .form-row, .field-row, div");
+      const errTxt = $group
+        .find(".errorlist, .invalid-feedback, .help-block.text-danger")
+        .first()
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!errTxt) return;
+      errosPorCampo.push({
+        campo: name,
+        erro: errTxt,
+        enviado: payloadDebug[name],
+      });
+    });
+    if (errosPorCampo.length) {
+      console.error(
+        `[criarDFDComum] erros por campo: ${JSON.stringify(errosPorCampo)}`,
+      );
+    }
+
+    // Dump dos selects-chave: mostra o valor enviado vs. opções disponíveis
+    // para o usuário identificar qual ID está fora da lista (ex.: unidade
+    // orçamentária da SMA cadastrada no Supabase não existe mais no M2A).
+    const dumpSelects = {};
+    for (const name of [
+      "orgao_solicitante",
+      "unidade_orcamentaria",
+      "responsavel_dfd",
+      "comissao_planejamento",
+      "fundamentacao",
+    ]) {
+      const $sel = $(`select[name="${name}"]`);
+      if (!$sel.length) continue;
+      const opts = [];
+      $sel.find("option").each((_, opt) => {
+        const v = $(opt).attr("value");
+        const t = $(opt).text().replace(/\s+/g, " ").trim();
+        if (v !== undefined && v !== "") opts.push(`${v}=${t.slice(0, 70)}`);
+      });
+      const enviado = payloadDebug[name];
+      const existe = enviado ? opts.some((o) => o.startsWith(`${enviado}=`)) : null;
+      dumpSelects[name] = {
+        enviado,
+        existeNasOpcoes: existe,
+        totalOpcoes: opts.length,
+        opcoes: opts.slice(0, 30),
+      };
+    }
+    console.error(
+      `[criarDFDComum] selects do formulário (enviado vs. opções):\n${JSON.stringify(dumpSelects, null, 2)}`,
+    );
+
+    throw new Error(`DFD comum não foi criada: ${errStr}`);
+  }
+  if (erros.size) {
+    console.warn(`[criarDFDComum] dfdId=${dfdId} criada com avisos: ${Array.from(erros).join(" | ")}`);
+  }
+  await sleep(1500);
+  console.log(`[criarDFDComum] dfdId=${dfdId}`);
+  return { dfdId };
+}
+
+
+// ---------------------------------------------------------------------
+// Cadastra dotação (Solicitação de Despesa) numa DFD.
+// `despesaProjetoAtividade` é o ID numérico (Django) do projeto/atividade.
+// Se o portal rejeitar o ID (não pertence à UO), faz fallback consultando
+// /estrutura_organizacional/despesa_projeto_atividade_list/?unidade_orcamentaria=UO
+// e tenta achar uma dotação equivalente para a mesma UO (por número ou
+// substring de descrição). Se conseguir, refaz o POST com o novo ID.
+// ---------------------------------------------------------------------
+async function listarDespesasProjetoAtividade(uo) {
+  const path = `/estrutura_organizacional/despesa_projeto_atividade_list/?unidade_orcamentaria=${encodeURIComponent(String(uo))}`;
+  const res = await m2a.get(path);
+  if (res.status >= 400) {
+    throw new Error(
+      `listarDespesasProjetoAtividade(${uo}): status ${res.status}`,
+    );
+  }
+  let json;
+  try {
+    json = JSON.parse(res.html);
+  } catch {
+    throw new Error(
+      `listarDespesasProjetoAtividade(${uo}): resposta não-JSON (${String(res.html || "").slice(0, 200)})`,
+    );
+  }
+  return Array.isArray(json?.results) ? json.results : [];
+}
+
+function escolherDespesaCompativel(lista, hints) {
+  if (!Array.isArray(lista) || !lista.length) return null;
+  const { numero, descricaoHint } = hints || {};
+  const numNorm = numero ? String(numero).trim() : "";
+  const descNorm = descricaoHint
+    ? String(descricaoHint).toUpperCase().replace(/\s+/g, " ").trim()
+    : "";
+  if (numNorm) {
+    const byNumero = lista.find(
+      (d) => String(d.numero || "").trim() === numNorm,
+    );
+    if (byNumero) return byNumero;
+    const byNumeroEmbutido = lista.find((d) =>
+      new RegExp(`\\.${numNorm.replace(/^0+/, "")}(?:\\b|$)`).test(
+        String(d.descricao || ""),
+      ),
+    );
+    if (byNumeroEmbutido) return byNumeroEmbutido;
+  }
+  if (descNorm) {
+    const byDesc = lista.find((d) =>
+      String(d.descricao || "")
+        .toUpperCase()
+        .includes(descNorm.slice(0, 20)),
+    );
+    if (byDesc) return byDesc;
+  }
+  return null;
+}
+
+async function postCadastrarDotacao({
+  dfdId,
+  unidadeOrcamentaria,
+  despesaProjetoAtividade,
+}) {
+  const path = SOLIC_DESPESA_INCLUIR(dfdId);
+  const csrf = await m2a.getCsrf(path, { force: true });
+  const body = new URLSearchParams();
+  body.set("csrfmiddlewaretoken", csrf);
+  body.set("unidade_orcamentaria", String(unidadeOrcamentaria));
+  body.set("despesa_projeto_atividade", String(despesaProjetoAtividade));
+  body.set("_salvar", "");
+  const res = await m2a.request("POST", path, {
+    body: body.toString(),
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${m2a.http.defaults.baseURL || ""}${path}`,
+    },
+  });
+  if (res.status >= 400) {
+    return { ok: false, erros: [`HTTP ${res.status}`], finalUrl: res.finalUrl };
+  }
+  const $ = loadDoc(res.html);
+  const erros = $(".errorlist, .alert-danger, .alert-error, .invalid-feedback")
+    .map((_, el) => $(el).text().replace(/\s+/g, " ").trim())
+    .get()
+    .filter(Boolean);
+  const finalUrl = String(res.finalUrl || "");
+  const sucessoPorRedirect =
+    /formalizacao_demanda\/\d+\/(?:#|$)/.test(finalUrl) ||
+    finalUrl.includes("#solicitacao_projeto_atividade");
+  if (erros.length) return { ok: false, erros, finalUrl };
+  if (!sucessoPorRedirect) {
+    const texto = $("form").text().replace(/\s+/g, " ").trim().slice(0, 300);
+    return {
+      ok: false,
+      erros: [`sem redirect de sucesso. formText="${texto}"`],
+      finalUrl,
+    };
+  }
+  return { ok: true, finalUrl };
+}
+
+export async function cadastrarDotacao({
+  dfdId,
+  unidadeOrcamentaria,
+  despesaProjetoAtividade,
+  despesaProjetoNumero,
+  despesaProjetoDescricao,
+}) {
+  if (!dfdId) throw new Error("cadastrarDotacao: dfdId obrigatório");
+  if (!unidadeOrcamentaria) {
+    throw new Error("cadastrarDotacao: unidadeOrcamentaria obrigatória");
+  }
+  if (!despesaProjetoAtividade) {
+    throw new Error("cadastrarDotacao: despesaProjetoAtividade obrigatória");
+  }
+
+  let attempt = await postCadastrarDotacao({
+    dfdId,
+    unidadeOrcamentaria,
+    despesaProjetoAtividade,
+  });
+
+  if (!attempt.ok) {
+    const errMsg = attempt.erros.join(" | ");
+    const ehEscolhaInvalida = /escolha\s+v[aá]lida/i.test(errMsg);
+    console.warn(
+      `[cadastrarDotacao] DFD ${dfdId} 1ª tentativa rejeitada (id=${despesaProjetoAtividade}, uo=${unidadeOrcamentaria}): ${errMsg}`,
+    );
+    if (ehEscolhaInvalida) {
+      try {
+        const lista = await listarDespesasProjetoAtividade(unidadeOrcamentaria);
+        console.log(
+          `[cadastrarDotacao] DFD ${dfdId} fallback: ${lista.length} dotações disponíveis para UO ${unidadeOrcamentaria}.`,
+        );
+
+        // Ordena: primeiro a melhor compatível (numero/descrição), depois as demais.
+        const melhor = escolherDespesaCompativel(lista, {
+          numero: despesaProjetoNumero,
+          descricaoHint: despesaProjetoDescricao,
+        });
+        const ordemTentativas = [];
+        if (melhor?.id) ordemTentativas.push(melhor);
+        for (const d of lista) {
+          if (!d?.id) continue;
+          if (String(d.id) === String(despesaProjetoAtividade)) continue; // já falhou
+          if (melhor?.id && String(d.id) === String(melhor.id)) continue;
+          ordemTentativas.push(d);
+        }
+
+        if (!ordemTentativas.length) {
+          console.error(
+            `[cadastrarDotacao] DFD ${dfdId} fallback: lista vazia para UO ${unidadeOrcamentaria}.`,
+          );
+        }
+
+        for (const cand of ordemTentativas) {
+          console.log(
+            `[cadastrarDotacao] DFD ${dfdId} fallback retry com id=${cand.id} (numero=${cand.numero} desc="${String(cand.descricao || "").slice(0, 60)}")`,
+          );
+          const tentativa = await postCadastrarDotacao({
+            dfdId,
+            unidadeOrcamentaria,
+            despesaProjetoAtividade: cand.id,
+          });
+          if (tentativa.ok) {
+            console.log(
+              `[cadastrarDotacao] DFD ${dfdId} OK via fallback (id=${cand.id}, numero=${cand.numero})`,
+            );
+            return { ok: true, fallbackId: cand.id };
+          }
+          console.warn(
+            `[cadastrarDotacao] DFD ${dfdId} fallback id=${cand.id} também rejeitada: ${tentativa.erros.join(" | ")}`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          `[cadastrarDotacao] DFD ${dfdId} fallback falhou: ${String(err?.message ?? err)}`,
+        );
+      }
+    }
+    throw new Error(
+      `cadastrarDotacao(${dfdId}) rejeitado: ${attempt.erros.join(" | ")}`,
+    );
+  }
+
+  console.log(
+    `[cadastrarDotacao] DFD ${dfdId} OK (despesa_projeto_atividade=${despesaProjetoAtividade}, uo=${unidadeOrcamentaria})`,
+  );
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------
+// Dispara geração do Processo Administrativo a partir de uma DFD
+// (a DFD da gerenciadora).
+// ---------------------------------------------------------------------
+export async function gerarProcessoFromDFD(dfdId) {
+  if (!dfdId) throw new Error("gerarProcessoFromDFD: dfdId obrigatório");
+  const path = GERAR_PROCESSO(dfdId);
+  const csrf = await m2a.getCsrf(`/gestao_compras/formalizacao_demanda/${dfdId}/`, {
+    force: true,
+  });
+  const body = new URLSearchParams();
+  body.set("csrfmiddlewaretoken", csrf);
+  body.set("text", "true");
+  const res = await m2a.request("POST", path, {
+    body: body.toString(),
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      Referer: `${m2a.http.defaults.baseURL || ""}/gestao_compras/formalizacao_demanda/${dfdId}/`,
+    },
+  });
+  if (res.status >= 400) {
+    throw new Error(`gerarProcessoFromDFD(${dfdId}): status ${res.status}`);
+  }
+  await sleep(1500);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------
+// Lê a página de detalhe da DFD para descobrir o processo administrativo
+// recém-criado (ID + número).
+// ---------------------------------------------------------------------
+export async function descobrirProcessoDaDFD(dfdId) {
+  const path = DFD_DETAIL(dfdId);
+  const res = await m2a.get(path);
+  if (res.status >= 400) {
+    throw new Error(`descobrirProcessoDaDFD(${dfdId}): status ${res.status}`);
+  }
+  const $ = loadDoc(res.html);
+  let processoId = null;
+  let numero = null;
+  $(".kt-widget12__item.m2a-widget12__item a[href*='/processo_administrativo/']").each(
+    (_i, el) => {
+      if (processoId) return;
+      const href = $(el).attr("href") || "";
+      const m = href.match(/\/processo_administrativo\/(\d+)/);
+      if (m) {
+        processoId = m[1];
+        numero = $(el).text().replace(/\s+/g, " ").trim();
+      }
+    },
+  );
+  if (!processoId) {
+    // Fallback: qualquer link de processo_administrativo na página
+    $("a[href*='/processo_administrativo/']").each((_i, el) => {
+      if (processoId) return;
+      const href = $(el).attr("href") || "";
+      const m = href.match(/\/processo_administrativo\/(\d+)/);
+      if (m) {
+        processoId = m[1];
+        numero = $(el).text().replace(/\s+/g, " ").trim();
+      }
+    });
+  }
+  if (!processoId) {
+    throw new Error(
+      `descobrirProcessoDaDFD(${dfdId}): processo administrativo não encontrado na página da DFD.`,
+    );
+  }
+  console.log(
+    `[descobrirProcessoDaDFD] dfdId=${dfdId} processoId=${processoId} numero="${numero || ""}"`,
+  );
+  return { processoId, numero: (numero || "").replace(/[^0-9]/g, "") };
+}
+
+// ---------------------------------------------------------------------
+// Vincula uma lista de DFDs (participantes) ao processo administrativo.
+// `dfdIds` deve ser array de IDs numéricos das DFDs a anexar.
+// ---------------------------------------------------------------------
+export async function vincularDFDsAoProcesso(processoId, dfdIds, onProgress) {
+  const ids = (dfdIds || []).map((x) => String(x).trim()).filter(Boolean);
+  if (!processoId) throw new Error("vincularDFDsAoProcesso: processoId obrigatório");
+  if (!ids.length) {
+    console.log(`[vincularDFDsAoProcesso] nenhum DFD para anexar — ignorado.`);
+    return { ok: true, vinculadas: 0, falhas: [] };
+  }
+  const path = ADICIONAR_SOLICITACOES(processoId);
+  const referer = `${m2a.http.defaults.baseURL || ""}/processo_administrativo/${processoId}/`;
+
+  // Endpoint do M2A processa de fato 1 DFD por chamada (itens=<id>). Mandar
+  // lista CSV retorna 200 mas só persiste o primeiro. Fazemos 1 POST por DFD.
+  let vinculadas = 0;
+  const falhas = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    try {
+      if (typeof onProgress === "function") onProgress(i, ids.length, id);
+      const csrf = await m2a.getCsrf(`/processo_administrativo/${processoId}/`, {
+        force: true,
+      });
+      const body = new URLSearchParams();
+      body.set("csrfmiddlewaretoken", csrf);
+      body.set("itens", id);
+      const res = await m2a.request("POST", path, {
+        body: body.toString(),
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+          Referer: referer,
+        },
+      });
+      const bodyTxt = String(res.html || "").slice(0, 300);
+      if (res.status >= 400) {
+        console.error(
+          `[vincularDFDsAoProcesso] DFD ${id} status ${res.status} body="${bodyTxt}"`,
+        );
+        falhas.push({ dfdId: id, status: res.status, body: bodyTxt });
+        continue;
+      }
+      console.log(
+        `[vincularDFDsAoProcesso] DFD ${id} → processo ${processoId} OK (status=${res.status})`,
+      );
+      vinculadas++;
+      await sleep(400);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[vincularDFDsAoProcesso] DFD ${id} erro: ${msg}`);
+      falhas.push({ dfdId: id, erro: msg });
+    }
+  }
+  return { ok: falhas.length === 0, vinculadas, falhas };
+}
+
+// ---------------------------------------------------------------------
+// Lê a tabela de itens do processo administrativo e devolve a ordem
+// atual: [{ itemId, sequencialAtual, descricao }].
+// ---------------------------------------------------------------------
+export async function listarItensDoProcesso(processoId) {
+  const res = await m2a.get(TABELA_ITENS_PROCESSO(processoId));
+  if (res.status >= 400) {
+    throw new Error(`listarItensDoProcesso(${processoId}): status ${res.status}`);
+  }
+  const $ = loadDoc(res.html);
+  const out = [];
+  $("tr.tr_processo_administrativo_item").each((_i, tr) => {
+    const $tr = $(tr);
+    const trId = $tr.attr("id") || "";
+    const itemId =
+      trId.match(/tr_processo_administrativo_item_(\d+)/i)?.[1] ||
+      trId.match(/tr_(\d+)$/)?.[1] ||
+      $tr.find('input[type="checkbox"][value]').first().attr("value") ||
+      $tr.find("button[id_item]").first().attr("id_item") ||
+      "";
+    if (!/^\d+$/.test(String(itemId))) return;
+    let sequencialAtual = null;
+    const $seqBtn = $tr.find("button[id_item]").first();
+    if ($seqBtn.length) {
+      const txt = $seqBtn.text().trim();
+      const n = parseInt(txt, 10);
+      if (Number.isFinite(n)) sequencialAtual = n;
+    }
+    const $tds = $tr.find("td");
+    if (sequencialAtual === null && $tds.length >= 3) {
+      const n = parseInt($tds.eq(2).text().replace(/\D+/g, ""), 10);
+      if (Number.isFinite(n)) sequencialAtual = n;
+    }
+    // 4ª <td> costuma ter a descrição visível; usamos um fallback robusto.
+    let descricao = "";
+    if ($tds.length >= 4) {
+      descricao = $tds.eq(3).text().replace(/\s+/g, " ").trim();
+    }
+    out.push({ itemId, sequencialAtual, descricao });
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// Reordena os itens do processo. `ordemDesejada` é array de descrições
+// na ordem esperada (case-insensitive, normalizada). Itens que casarem
+// pela descrição são movidos via alterar_sequencial.
+// ---------------------------------------------------------------------
+function norm(s) {
+  return String(s || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
+  const atual = await listarItensDoProcesso(processoId);
+  if (!atual.length) {
+    console.warn(
+      `[reordenarItensProcesso] processo ${processoId}: nenhum item encontrado na tabela; nada foi reordenado.`,
+    );
+    return { ok: false, reordenados: 0, motivo: "nenhum item encontrado" };
+  }
+  const desejada = (descricoesOrdenadas || []).map(norm).filter(Boolean);
+  if (!desejada.length) return { ok: false, reordenados: 0, motivo: "ordem desejada vazia" };
+  console.log(
+    `[reordenarItensProcesso] processo ${processoId}: ${atual.length} item(ns) no portal; ${desejada.length} posição(ões) desejada(s).`,
+  );
+
+  // Para cada item desejado, na ordem, garantir que esteja na posição N+1.
+  // Como o portal renumera ao mover, iteramos sempre relendo a tabela.
+  let reordenados = 0;
+  for (let i = 0; i < desejada.length; i++) {
+    const seqAlvo = i + 1;
+    const tabela = await listarItensDoProcesso(processoId);
+    // Procura o item alvo pela descrição normalizada
+    const alvo = tabela.find(
+      (it) =>
+        norm(it.descricao) === desejada[i] ||
+        norm(it.descricao).startsWith(desejada[i].slice(0, 40)),
+    );
+    if (!alvo) {
+      console.warn(
+        `[reordenarItensProcesso] item esperado na pos ${seqAlvo} não encontrado: "${desejada[i].slice(0, 60)}"`,
+      );
+      continue;
+    }
+    if (alvo.sequencialAtual === seqAlvo) continue;
+    const path = ALTERAR_SEQUENCIAL_ITEM(alvo.itemId);
+    const csrf = await m2a.getCsrf(`/processo_administrativo/${processoId}/`);
+    const body = new URLSearchParams();
+    body.set("novo_sequencial", String(seqAlvo));
+    body.set("csrfmiddlewaretoken", csrf);
+    const res = await m2a.request("POST", path, {
+      body: body.toString(),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        Referer: `${m2a.http.defaults.baseURL || ""}/processo_administrativo/${processoId}/`,
+      },
+    });
+    if (res.status >= 400) {
+      console.warn(
+        `[reordenarItensProcesso] item ${alvo.itemId} → pos ${seqAlvo}: status ${res.status}`,
+      );
+      continue;
+    }
+    reordenados++;
+    await sleep(120);
+  }
+  const final = await listarItensDoProcesso(processoId);
+  const foraDeOrdem = [];
+  for (let i = 0; i < Math.min(desejada.length, final.length); i++) {
+    const itemNaPosicao = final.find((it) => it.sequencialAtual === i + 1) || final[i];
+    if (!itemNaPosicao) continue;
+    const descFinal = norm(itemNaPosicao.descricao);
+    if (descFinal !== desejada[i] && !descFinal.startsWith(desejada[i].slice(0, 40))) {
+      foraDeOrdem.push({ posicao: i + 1, esperado: desejada[i].slice(0, 80), encontrado: descFinal.slice(0, 80) });
+    }
+  }
+  if (foraDeOrdem.length) {
+    console.warn(
+      `[reordenarItensProcesso] processo ${processoId}: ${foraDeOrdem.length} posição(ões) ainda fora da ordem desejada. amostra=${JSON.stringify(foraDeOrdem.slice(0, 5))}`,
+    );
+  } else {
+    console.log(`[reordenarItensProcesso] processo ${processoId}: ordem conferida com sucesso.`);
+  }
+  return { ok: foraDeOrdem.length === 0, reordenados, foraDeOrdem };
+}

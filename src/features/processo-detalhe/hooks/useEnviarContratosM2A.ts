@@ -1,0 +1,567 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { notify } from "@/lib/notify";
+import { useProgress } from "@/contexts/ProgressContext";
+import { useM2AConnection } from "@/contexts/M2AConnectionProvider";
+import { useM2APreferences } from "@/hooks/useM2APreferences";
+import {
+  filterServidoresByUnidade,
+  useServidores,
+} from "@/hooks/useM2ACatalog";
+import {
+  ETAPAS_ORDEM,
+  buildM2AContractPayload,
+  diagnoseM2A,
+  extractM2AProcessoId,
+  getDataFimContrato,
+  isNumericM2AId,
+  listenAllM2AProgress,
+  sendToM2A,
+  type M2AProgressEvent,
+} from "@/lib/m2a";
+import { type ContratoRow, type Processo } from "../lib";
+
+type Params = {
+  processoId: string;
+  processo: Processo | null | undefined;
+  contratos: ContratoRow[];
+  selected: Set<string>;
+  clearSelection: () => void;
+};
+
+export function useEnviarContratosM2A({
+  processoId,
+  processo,
+  contratos,
+  selected,
+  clearSelection: _clearSelection,
+}: Params) {
+  const qc = useQueryClient();
+  const { connected, ensureConnected } = useM2AConnection();
+  const { startTask, updateProgress, finishTask, failTask } = useProgress();
+  const m2aBatchRef = useRef({ total: 0, finished: 0 });
+  const cancelledRef = useRef(false);
+  const errosRef = useRef(0);
+  const currentCancelRef = useRef<(() => void) | null>(null);
+
+  const [batchStatus, setBatchStatus] = useState<Record<string, string>>({});
+  const [sending, setSending] = useState(false);
+  const [m2aDialogOpen, setM2aDialogOpen] = useState(false);
+  const [m2aFiscalId, setM2aFiscalId] = useState<string>("");
+  const [m2aContratoData, setM2aContratoData] = useState<string>("");
+  const [m2aContratoDataFim, setM2aContratoDataFim] = useState<string>("");
+  const dataFimTouchedRef = useRef(false);
+
+  const handleDataChange = useCallback((value: string) => {
+    setM2aContratoData(value);
+    if (!dataFimTouchedRef.current) {
+      setM2aContratoDataFim(value ? getDataFimContrato(value) : "");
+    }
+  }, []);
+
+  const handleDataFimChange = useCallback((value: string) => {
+    dataFimTouchedRef.current = true;
+    setM2aContratoDataFim(value);
+  }, []);
+
+  const { data: m2aFiscais = [] } = useServidores("FISCAL");
+
+  const selectedContracts = useMemo(
+    () => contratos.filter((c) => selected.has(c.id)),
+    [contratos, selected],
+  );
+
+  const selectedUnidadeIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedContracts
+            .map((c) => c.m2a_orgao_id)
+            .filter((v): v is string => Boolean(v)),
+        ),
+      ),
+    [selectedContracts],
+  );
+
+  const shouldAskFiscal = selectedContracts.length === 1;
+  const preferenceUnidadeGestoraId =
+    selectedUnidadeIds.length === 1 ? selectedUnidadeIds[0] : null;
+  const { preference, savePreference } = useM2APreferences(
+    preferenceUnidadeGestoraId,
+  );
+
+  const filteredFiscais = useMemo(() => {
+    if (selectedUnidadeIds.length === 1) {
+      return filterServidoresByUnidade(m2aFiscais, selectedUnidadeIds[0]);
+    }
+    if (selectedUnidadeIds.length > 1) {
+      return m2aFiscais.filter((fiscal) =>
+        fiscal.unidades_gestoras.some((u) =>
+          selectedUnidadeIds.includes(u.m2a_id),
+        ),
+      );
+    }
+    return m2aFiscais;
+  }, [m2aFiscais, selectedUnidadeIds]);
+
+  useEffect(() => {
+    if (!preference) return;
+    if (preference.data_padrao) setM2aContratoData(preference.data_padrao);
+    if (preference.fiscal_id) setM2aFiscalId(preference.fiscal_id);
+  }, [preference]);
+
+  // Refs para o listener global — evita re-registrar a cada mudança em
+  // `contratos` (o que fazia perder eventos `concluido` durante o troca).
+  const contratosRef = useRef(contratos);
+  useEffect(() => {
+    contratosRef.current = contratos;
+  }, [contratos]);
+  // Resolver do envio sequencial: cada contrato só termina quando o worker
+  // emite `concluido` ou `erro`. O loop de envio aguarda essa promessa antes
+  // de despachar o próximo, evitando 7-8 SSEs concorrentes disputando a
+  // sessão M2A e a edge function.
+  const pendingResolversRef = useRef<Map<string, (evt: M2AProgressEvent) => void>>(
+    new Map(),
+  );
+
+  // Listener global de progresso — registrado UMA vez no mount.
+  useEffect(() => {
+    const off = listenAllM2AProgress(async (event) => {
+      if (cancelledRef.current) return;
+      const contratoAtual = contratosRef.current.find(
+        (c) => c.id === event.contratoId,
+      );
+      const belongsToProcess = Boolean(contratoAtual);
+      if (!belongsToProcess) return;
+      if (
+        event.m2a_contrato_id &&
+        event.m2a_contrato_id !== contratoAtual?.m2a_contrato_id
+      ) {
+        await supabase
+          .from("contratos")
+          .update({ m2a_contrato_id: event.m2a_contrato_id })
+          .eq("id", event.contratoId);
+      }
+
+      const total = Math.max(m2aBatchRef.current.total, 1);
+      const etapaIndex = Math.max(ETAPAS_ORDEM.indexOf(event.etapa), 0);
+      const etapaProgress =
+        event.etapa === "concluido"
+          ? 1
+          : event.etapa === "erro"
+            ? 1
+            : etapaIndex / Math.max(ETAPAS_ORDEM.length - 1, 1);
+      const progress =
+        ((m2aBatchRef.current.finished + etapaProgress) / total) * 100;
+
+      if (event.etapa !== "concluido" && event.etapa !== "erro") {
+        updateProgress(
+          progress,
+          `${contratoAtual?.numero_contrato ?? "Contrato"}: ${event.mensagem}`,
+        );
+      }
+
+      if (event.etapa === "concluido") {
+        m2aBatchRef.current.finished += 1;
+        updateProgress(
+          (m2aBatchRef.current.finished / total) * 100,
+          `${contratoAtual?.numero_contrato ?? "Contrato"} enviado com sucesso.`,
+        );
+        setBatchStatus((status) => ({
+          ...status,
+          [event.contratoId]: "sucesso",
+        }));
+        await supabase
+          .from("contratos")
+          .update({
+            status_envio_m2a: "sucesso",
+            enviado_m2a_em: new Date().toISOString(),
+            m2a_contrato_id: event.m2a_contrato_id ?? null,
+            m2a_documentos_gerados: (event.documentosM2A ?? []) as any,
+            ultimo_erro_m2a: null,
+          })
+          .eq("id", event.contratoId);
+        qc.invalidateQueries({ queryKey: ["processo-detail", processoId] });
+        // A conclusão da tarefa global é consolidada no fim do loop de envio
+        // (ver handleSendSelectedToM2A), para o botão "Cancelar" continuar
+        // disponível enquanto houver contratos pendentes.
+
+        const resolver = pendingResolversRef.current.get(event.contratoId);
+        if (resolver) {
+          pendingResolversRef.current.delete(event.contratoId);
+          resolver(event);
+        }
+      }
+
+      if (event.etapa === "erro") {
+        m2aBatchRef.current.finished += 1;
+        // NÃO chamar failTask aqui: isso encerrava a tarefa global e fazia o
+        // botão "Cancelar" sumir no meio do lote. O resultado é consolidado
+        // apenas no fim do loop de envio.
+        errosRef.current += 1;
+        updateProgress(
+          (m2aBatchRef.current.finished / total) * 100,
+          `${contratoAtual?.numero_contrato ?? "Contrato"}: ${event.mensagem || "falha no envio."}`,
+        );
+        setBatchStatus((status) => ({
+          ...status,
+          [event.contratoId]: "erro",
+        }));
+
+        await supabase
+          .from("contratos")
+          .update({
+            status_envio_m2a: "erro",
+            ultimo_erro_m2a: event.mensagem,
+            ...(event.m2a_contrato_id
+              ? { m2a_contrato_id: event.m2a_contrato_id }
+              : {}),
+          })
+          .eq("id", event.contratoId);
+        qc.invalidateQueries({ queryKey: ["processo-detail", processoId] });
+        const resolver = pendingResolversRef.current.get(event.contratoId);
+        if (resolver) {
+          pendingResolversRef.current.delete(event.contratoId);
+          resolver(event);
+        }
+      }
+    });
+    return () => {
+      off?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const validateM2AConfig = useCallback(() => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) {
+      notify.error("Nenhum contrato selecionado.");
+      return null;
+    }
+    if (shouldAskFiscal && !m2aFiscalId) {
+      notify.error("Selecione o fiscal do contrato.");
+      return null;
+    }
+    if (!m2aContratoData) {
+      notify.error("Informe a data do contrato.");
+      return null;
+    }
+    if (!processo?.m2a_url || !extractM2AProcessoId(processo.m2a_url)) {
+      notify.error("Processo sem URL externa válida.", {
+        description:
+          "Informe e salve o link do processo no portal antes de enviar contratos.",
+      });
+      return null;
+    }
+    if (shouldAskFiscal && !isNumericM2AId(m2aFiscalId)) {
+      notify.error("IDs externos inválidos.", {
+        description: "Fiscal deve usar apenas código numérico.",
+      });
+      return null;
+    }
+
+    const invalidos = selectedContracts.filter(
+      (c) =>
+        !c.m2a_orgao_id ||
+        !isNumericM2AId(c.m2a_orgao_id) ||
+        !c.m2a_dot_orgao_id ||
+        !isNumericM2AId(c.m2a_dot_orgao_id) ||
+        !c.m2a_uo_id ||
+        !isNumericM2AId(c.m2a_uo_id) ||
+        !c.m2a_dot_id ||
+        !isNumericM2AId(c.m2a_dot_id) ||
+        (!shouldAskFiscal &&
+          (!c.m2a_fiscal_codigo || !isNumericM2AId(c.m2a_fiscal_codigo))) ||
+        !c.m2a_gestor_codigo ||
+        !isNumericM2AId(c.m2a_gestor_codigo),
+    );
+    if (invalidos.length > 0) {
+      notify.error("Contrato sem cadastro externo completo.", {
+        description:
+          "A secretaria do contrato precisa ter Unidade Gestora, Órgão da Dotação, UO, Dotação e Gestor cadastrados.",
+      });
+      console.table(
+        invalidos.map((c) => ({
+          contrato: c.numero_contrato,
+          secretaria: c.secretaria_sigla,
+          unidade_gestora: c.m2a_orgao_id,
+          orgao_dotacao: c.m2a_dot_orgao_id,
+          unidade_orcamentaria: c.m2a_uo_id,
+          despesa_projeto_atividade: c.m2a_dot_id,
+          fiscal_id: c.m2a_fiscal_codigo,
+          gestor_id: c.m2a_gestor_codigo,
+        })),
+      );
+      return null;
+    }
+
+    const semItens = selectedContracts.filter((c) => c.itens.length === 0);
+    if (semItens.length > 0) {
+      notify.error("Contrato sem itens para envio.", {
+        description:
+          "A automação precisa dos itens importados para adicionar e ajustar quantidades.",
+      });
+      console.table(
+        semItens.map((c) => ({
+          contrato: c.numero_contrato,
+          secretaria: c.secretaria_sigla,
+        })),
+      );
+      return null;
+    }
+
+    const semAta = selectedContracts.filter(
+      (c) => !c.m2a_ata_id || !isNumericM2AId(c.m2a_ata_id),
+    );
+    if (semAta.length > 0) {
+      notify.error("Contrato sem ata definida.", {
+        description:
+          "Revise a importação: cada contrato precisa carregar a ata correta dos seus itens.",
+      });
+      console.table(
+        semAta.map((c) => ({
+          contrato: c.numero_contrato,
+          secretaria: c.secretaria_sigla,
+          fornecedor: c.fornecedor_nome ?? c.preposto,
+          ata_m2a: c.m2a_ata_id,
+        })),
+      );
+      return null;
+    }
+
+    return { ids };
+  }, [
+    selected,
+    shouldAskFiscal,
+    m2aFiscalId,
+    m2aContratoData,
+    processo?.m2a_url,
+    selectedContracts,
+  ]);
+
+  const buildM2APayload = useCallback(
+    (cid: string) => {
+      const contrato = contratos.find((c) => c.id === cid);
+      if (!contrato) return null;
+      const dataContrato = m2aContratoData;
+      const dadosDotacao = {
+        orgao: contrato.m2a_dot_orgao_id,
+        unidade_orcamentaria: contrato.m2a_uo_id,
+        despesa_projeto_atividade: contrato.m2a_dot_id,
+      };
+      return buildM2AContractPayload({
+        contratoId: cid,
+        m2aProcessoUrl: processo?.m2a_url,
+        m2aAtaId: contrato.m2a_ata_id,
+        contrato: {
+          numero_contrato: contrato.numero_contrato,
+          m2a_contrato_id: contrato.m2a_contrato_id,
+          objeto: contrato.objeto,
+          data: dataContrato,
+          data_fim: m2aContratoDataFim || contrato.data_fim || null,
+          preposto: contrato.preposto,
+        },
+        itens: contrato.itens,
+        dotacao: dadosDotacao,
+        unidadeGestoraId: contrato.m2a_orgao_id,
+        fiscalId: shouldAskFiscal ? m2aFiscalId : contrato.m2a_fiscal_codigo,
+        gestorId: contrato.m2a_gestor_codigo,
+        secretariaNome: contrato.secretaria_nome ?? null,
+      });
+    },
+    [
+      contratos,
+      m2aContratoData,
+      m2aContratoDataFim,
+      processo?.m2a_url,
+      shouldAskFiscal,
+      m2aFiscalId,
+    ],
+  );
+
+  const handleDiagnoseM2A = useCallback(() => {
+    if (!ensureConnected()) return;
+    const config = validateM2AConfig();
+    if (!config) return;
+    const payload = buildM2APayload(config.ids[0]);
+    if (!payload) return;
+    notify.info("Diagnóstico iniciado. Veja o console da aba do portal.");
+    diagnoseM2A(payload as any);
+  }, [ensureConnected, validateM2AConfig, buildM2APayload]);
+
+  /** Interrompe o lote: aborta o contrato em curso e pula os restantes. */
+  const cancelBatch = useCallback(() => {
+    cancelledRef.current = true;
+    currentCancelRef.current?.();
+    currentCancelRef.current = null;
+    // Libera o loop sequencial imediatamente.
+    for (const [cid, resolve] of pendingResolversRef.current.entries()) {
+      pendingResolversRef.current.delete(cid);
+      resolve({} as M2AProgressEvent);
+      void supabase
+        .from("contratos")
+        .update({ status_envio_m2a: "pendente" })
+        .eq("id", cid);
+      setBatchStatus((s) => ({ ...s, [cid]: "cancelado" }));
+    }
+    setSending(false);
+    notify.info("Cancelando envio…");
+    qc.invalidateQueries({ queryKey: ["processo-detail", processoId] });
+  }, [processoId, qc]);
+
+  const handleSendSelectedToM2A = useCallback(async () => {
+    if (!ensureConnected()) return;
+    const config = validateM2AConfig();
+    if (!config) return;
+
+    setSending(true);
+    setM2aDialogOpen(false);
+    cancelledRef.current = false;
+    errosRef.current = 0;
+    m2aBatchRef.current = { total: config.ids.length, finished: 0 };
+    startTask(
+      "Enviando contratos ao portal",
+      `Preparando ${config.ids.length} contrato(s)...`,
+      { onCancel: cancelBatch },
+    );
+    notify.info(
+      `Iniciando envio sequencial de ${config.ids.length} contrato(s)...`,
+    );
+
+    const { error: dataError } = await supabase
+      .from("contratos")
+      .update({
+        data: m2aContratoData,
+        ...(m2aContratoDataFim ? { data_fim: m2aContratoDataFim } : {}),
+      })
+      .in("id", config.ids);
+    if (dataError) {
+      setSending(false);
+      failTask(dataError.message);
+      notify.error("Falha ao salvar a data dos contratos.", {
+        description: dataError.message,
+      });
+      return;
+    }
+
+    let cancelados = 0;
+    for (const cid of config.ids) {
+      if (cancelledRef.current) {
+        cancelados += 1;
+        setBatchStatus((s) => ({ ...s, [cid]: "cancelado" }));
+        continue;
+      }
+      setBatchStatus((s) => ({ ...s, [cid]: "processando" }));
+      const payload = buildM2APayload(cid);
+      if (!payload) continue;
+      const currentIndex = config.ids.indexOf(cid) + 1;
+      const contratoAtual = contratos.find((item) => item.id === cid);
+      updateProgress(
+        ((currentIndex - 1) / Math.max(config.ids.length, 1)) * 100,
+        `Despachando ${contratoAtual?.numero_contrato ?? "contrato"} (${currentIndex} de ${config.ids.length})...`,
+      );
+
+      const contrato = contratos.find((item) => item.id === cid);
+      if (
+        shouldAskFiscal &&
+        contrato?.m2a_orgao_id &&
+        payload.dadosM2A.fiscal_id
+      ) {
+        await savePreference({
+          unidade_gestora_id: contrato.m2a_orgao_id,
+          secretaria_id: contrato.secretaria_id,
+          data_padrao: payload.contrato.data as string,
+          fiscal_id: payload.dadosM2A.fiscal_id as string,
+          gestor_id: payload.dadosM2A.gestor_id as string,
+        });
+      }
+
+      // Envio SEQUENCIAL de verdade: registra um resolver para este contrato
+      // e só avança quando o listener global receber `concluido` ou `erro`.
+      // Isso evita 7-8 SSEs concorrentes disputando cookie/sessão M2A e
+      // exaurindo a edge function — que era o motivo do "embaralhado".
+      const waitTerminal = new Promise<void>((resolve) => {
+        pendingResolversRef.current.set(cid, () => resolve());
+        // Timeout de segurança (8min por contrato): se o SSE cair, libera
+        // o próximo. O listener global continua ativo caso o evento chegue
+        // atrasado (worker mais lento que a edge function).
+        setTimeout(() => {
+          if (pendingResolversRef.current.has(cid)) {
+            pendingResolversRef.current.delete(cid);
+            resolve();
+          }
+        }, 8 * 60 * 1000);
+      });
+      currentCancelRef.current = sendToM2A(payload as any);
+      await waitTerminal;
+      currentCancelRef.current = null;
+    }
+
+    setSending(false);
+    // Consolidação única no fim do lote: só aqui a tarefa global termina.
+    const erros = errosRef.current;
+    const sucessos = Math.max(config.ids.length - erros - cancelados, 0);
+    if (cancelledRef.current) {
+      failTask(
+        cancelados > 0
+          ? `Envio cancelado. ${cancelados} contrato(s) não foram enviados.`
+          : "Envio cancelado.",
+      );
+      notify.info(
+        cancelados > 0
+          ? `Envio cancelado. ${cancelados} contrato(s) não foram enviados.`
+          : "Envio cancelado.",
+      );
+    } else if (erros > 0) {
+      const resumo = `${sucessos} enviado(s) com sucesso, ${erros} com erro.`;
+      failTask(resumo);
+      notify.error("Envio concluído com falhas.", { description: resumo });
+    } else {
+      finishTask(`Envio ao portal concluído: ${sucessos} contrato(s).`);
+      notify.success(`${sucessos} contrato(s) enviado(s) ao portal.`);
+    }
+
+    qc.invalidateQueries({ queryKey: ["processo-detail", processoId] });
+  }, [
+    ensureConnected,
+    validateM2AConfig,
+    startTask,
+    m2aContratoData,
+    m2aContratoDataFim,
+    failTask,
+    finishTask,
+    buildM2APayload,
+    contratos,
+    updateProgress,
+    shouldAskFiscal,
+    savePreference,
+    qc,
+    processoId,
+    cancelBatch,
+  ]);
+
+  return {
+    // state
+    batchStatus,
+    sending,
+    connected,
+    m2aDialogOpen,
+    setM2aDialogOpen,
+    m2aFiscalId,
+    setM2aFiscalId,
+    m2aContratoData,
+    setM2aContratoData: handleDataChange,
+    m2aContratoDataFim,
+    setM2aContratoDataFim: handleDataFimChange,
+    // memos
+    selectedContracts,
+    selectedUnidadeIds,
+    shouldAskFiscal,
+    filteredFiscais,
+    // actions
+    handleDiagnoseM2A,
+    handleSendSelectedToM2A,
+    cancelBatch,
+  };
+}

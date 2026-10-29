@@ -1,0 +1,18 @@
+
+---
+description: Economia de contexto e preservação de projetos existentes
+alwaysApply: true
+---
+
+- Projeto existente e funcional: preservar arquitetura e comportamento.
+- Antes de explorar código, consultar Graphify e docs/architecture/.
+- Não reconstruir o mapa global se o índice estiver válido.
+- Buscar símbolos, assinaturas e referências antes de ler arquivos inteiros.
+- Ler somente arquivos e trechos necessários à tarefa.
+- Seguir imports e dependências apenas até esclarecer o fluxo relevante.
+- Após alterações, atualizar apenas os mapas afetados.
+- Se o índice estiver desatualizado ou incompleto, verificar os arquivos reais.
+- Não inventar assinaturas, dependências ou comportamentos.
+- Não refatorar, trocar tecnologias ou instalar ferramentas sem autorização.
+- Executar verificações direcionadas e preservar alterações preexistentes.
+- Responder de forma concisa, sem explicações redundantes.
