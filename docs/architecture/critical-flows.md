@@ -29,7 +29,7 @@ sequenceDiagram
 ```
 
 - **Login:** `routes/login.tsx` — `supabase.auth.signInWithPassword` (e fluxos relacionados no mesmo arquivo).
-- **Roles:** `useAuth` busca `user_roles` após `onAuthStateChange`; invalida `queryClient` em SIGNED_IN/OUT/TOKEN_REFRESHED.
+- **Roles:** `useAuth` busca `user_roles` após `onAuthStateChange`; invalida `queryClient` em SIGNED_IN/USER_UPDATED; TOKEN_REFRESHED não refetch a lista inteira.
 - **Dispositivo confiável:** `lib/trusted-device.ts` ↔ edge `trusted-device` (`issue`, `validate`, `revoke`).
 
 ## 3. Leitura/escrita de dados (padrão)
@@ -48,7 +48,7 @@ sequenceDiagram
 ## 5. Envio de contrato ao portal M2A
 
 1. UI monta payload via `buildM2AContractPayload` (`lib/m2a/payload.ts`) + dados form (`useContratoForm`).
-2. `sendToM2A` abre SSE via proxy → `POST /contratos/processar`.
+2. `sendToM2A` abre SSE via proxy → `POST /contratos/processar` (`readSseStream` em `lib/m2a/sse.ts`, também usado por SRP/comum/documentos).
 3. Worker emite eventos de etapa; client reemite `CustomEvent` `M2A_PROGRESS` na `window`.
 4. Componentes escutam progresso (`listenM2AProgress`, trackers globais).
 5. Sucesso atualiza IDs M2A em `contratos` / documentos (`m2a_documento_id`, etc.) via callbacks das mutations (ver hooks `useEnviarContratoM2A`).
@@ -58,14 +58,14 @@ sequenceDiagram
 ## 6. Importação de contratos (planilha)
 
 1. Upload na rota `/importar-contratos`.
-2. `parseContratoXlsx` / `agruparContratos` (`lib/contratoImport.ts`) no client.
+2. `parseContratoXlsx` / `agruparContratos` (`lib/contratoImport.ts`) no client; XLSX lido via Web Worker (`readXlsxMatrix`).
 3. Persistência em `contrato_import_jobs`, itens e dotações.
 4. Validação pré-geração (`useValidacaoPreGeracao`) cruza dados M2A (atas, fornecedor).
 5. Autorização gera registros em `contratos` (`useAutorizarGeracao`).
 
 ## 7. Fluxo IRP
 
-1. Upload planilha → `analisar()` (`lib/irp.ts`).
+1. Upload planilha → `analisar()` (`lib/irp.ts`); leitura XLSX no Web Worker.
 2. Job salvo em `irp_jobs` + secretarias/unidades associadas.
 3. Export por secretária (`gerarPlanilhaSecretaria`).
 4. Envio ao M2A: `criarProcessoSrpM2A` ou fluxo comum conforme tipo; progresso via listeners em `client.ts`.

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { routeHead } from "@/lib/utils/route-head";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,7 +9,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { appOriginPath, redirectPathAfterLogin } from "@/lib/utils/app-path";
 import {
@@ -20,10 +19,9 @@ import {
   Lock,
   Mail,
   ShieldCheck,
-  User,
+  CheckCircle2,
   ArrowLeft,
   Sparkles,
-  CheckCircle2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -50,46 +48,11 @@ const loginSchema = z.object({
   password: z.string().min(1, "Informe sua senha"),
 });
 
-const signupSchema = z
-  .object({
-    nome: z
-      .string()
-      .trim()
-      .min(2, "Informe seu nome completo")
-      .max(100, "Máximo 100 caracteres"),
-    email: z.string().trim().email("Informe um e-mail válido").max(255),
-    password: z
-      .string()
-      .min(8, "Use ao menos 8 caracteres")
-      .max(72, "Máximo 72 caracteres")
-      .regex(/[A-Z]/, "Inclua uma letra maiúscula")
-      .regex(/[a-z]/, "Inclua uma letra minúscula")
-      .regex(/[0-9]/, "Inclua um número"),
-    confirmPassword: z.string(),
-    accept: z
-      .boolean()
-      .refine((v) => v === true, "Você precisa concordar com os termos"),
-  })
-  .refine((v) => v.password === v.confirmPassword, {
-    path: ["confirmPassword"],
-    message: "As senhas não conferem",
-  });
-
 const recoverSchema = z.object({
   email: z.string().trim().email("Informe um e-mail válido").max(255),
 });
 
 type Mode = "auth" | "recover";
-
-function passwordStrength(pw: string) {
-  let score = 0;
-  if (pw.length >= 8) score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  return Math.min(score, 4);
-}
 
 function Login() {
   const { user, loading } = useAuth();
@@ -98,7 +61,6 @@ function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<Mode>("auth");
   const [showPw, setShowPw] = useState(false);
-  const [showSignupPw, setShowSignupPw] = useState(false);
   const [trustDevice, setTrustDevice] = useState(true);
 
   useEffect(() => {
@@ -112,25 +74,10 @@ function Login() {
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
-  const signupForm = useForm<z.infer<typeof signupSchema>>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-      confirmPassword: "",
-      nome: "",
-      accept: false,
-    },
-  });
   const recoverForm = useForm<z.infer<typeof recoverSchema>>({
     resolver: zodResolver(recoverSchema),
     defaultValues: { email: "" },
   });
-
-  const watchedPw = signupForm.watch("password");
-  const strength = useMemo(() => passwordStrength(watchedPw ?? ""), [watchedPw]);
-  const strengthLabel =
-    ["Muito fraca", "Fraca", "Razoável", "Forte", "Excelente"][strength] ?? "";
 
   async function onLogin(v: z.infer<typeof loginSchema>) {
     setSubmitting(true);
@@ -150,26 +97,6 @@ function Login() {
     setSubmitting(false);
     notify.success("Bem-vindo de volta");
     navigate({ to: redirectPathAfterLogin(redirectTo) });
-  }
-
-
-  async function onSignup(v: z.infer<typeof signupSchema>) {
-    setSubmitting(true);
-    const { error } = await supabase.auth.signUp({
-      email: v.email,
-      password: v.password,
-      options: {
-        emailRedirectTo: appOriginPath("/login"),
-        data: { nome: v.nome },
-      },
-    });
-    setSubmitting(false);
-    if (error)
-      return notify.error("Falha no cadastro", { description: error.message });
-    notify.success("Conta criada com sucesso", {
-      description:
-        "Se a confirmação por e-mail estiver ativa, verifique sua caixa de entrada.",
-    });
   }
 
   async function onRecover(v: z.infer<typeof recoverSchema>) {
@@ -320,19 +247,7 @@ function Login() {
                 </p>
               </header>
 
-              <div className="rounded-lg border border-border/70 bg-card/80 p-1.5 shadow-[var(--shadow-card)] backdrop-blur-xl">
-                <Tabs defaultValue="login">
-                  <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted/60 p-1">
-                    <TabsTrigger value="login" className="rounded-lg">
-                      Entrar
-                    </TabsTrigger>
-                    <TabsTrigger value="signup" className="rounded-lg">
-                      Criar conta
-                    </TabsTrigger>
-                  </TabsList>
-
-                  {/* ─── Login ─── */}
-                  <TabsContent value="login" className="p-5 pt-6">
+              <div className="rounded-lg border border-border/70 bg-card/80 p-6 shadow-[var(--shadow-card)] backdrop-blur-xl">
                     <form
                       onSubmit={loginForm.handleSubmit(onLogin)}
                       className="flex flex-col gap-4"
@@ -431,162 +346,6 @@ function Login() {
                         {submitting ? "Autenticando..." : "Entrar"}
                       </Button>
                     </form>
-                  </TabsContent>
-
-                  {/* ─── Signup ─── */}
-                  <TabsContent value="signup" className="p-5 pt-6">
-                    <form
-                      onSubmit={signupForm.handleSubmit(onSignup)}
-                      className="flex flex-col gap-4"
-                      noValidate
-                    >
-                      <Field
-                        id="su-nome"
-                        label="Nome completo"
-                        icon={<User className="size-4" />}
-                        error={signupForm.formState.errors.nome?.message}
-                      >
-                        <Input
-                          id="su-nome"
-                          autoComplete="name"
-                          placeholder="Seu nome"
-                          className="pl-9"
-                          {...signupForm.register("nome")}
-                        />
-                      </Field>
-
-                      <Field
-                        id="su-email"
-                        label="E-mail institucional"
-                        icon={<Mail className="size-4" />}
-                        error={signupForm.formState.errors.email?.message}
-                      >
-                        <Input
-                          id="su-email"
-                          type="email"
-                          autoComplete="email"
-                          placeholder="voce@itarema.ce.gov.br"
-                          className="pl-9"
-                          {...signupForm.register("email")}
-                        />
-                      </Field>
-
-                      <Field
-                        id="su-pw"
-                        label="Senha"
-                        icon={<Lock className="size-4" />}
-                        trailing={
-                          <button
-                            type="button"
-                            onClick={() => setShowSignupPw((v) => !v)}
-                            className="absolute inset-y-0 right-2 grid place-items-center px-2 text-muted-foreground hover:text-foreground"
-                            aria-label={
-                              showSignupPw ? "Ocultar senha" : "Mostrar senha"
-                            }
-                          >
-                            {showSignupPw ? (
-                              <EyeOff className="size-4" />
-                            ) : (
-                              <Eye className="size-4" />
-                            )}
-                          </button>
-                        }
-                        error={signupForm.formState.errors.password?.message}
-                      >
-                        <Input
-                          id="su-pw"
-                          type={showSignupPw ? "text" : "password"}
-                          autoComplete="new-password"
-                          placeholder="Mín. 8 caracteres, com maiúscula e número"
-                          className="pl-9 pr-10"
-                          {...signupForm.register("password")}
-                        />
-                      </Field>
-
-                      {/* Strength meter */}
-                      <div className="-mt-1.5 space-y-1.5">
-                        <div className="flex gap-1.5">
-                          {[0, 1, 2, 3].map((i) => (
-                            <span
-                              key={i}
-                              className={`h-1 flex-1 rounded-full transition-colors ${
-                                i < strength
-                                  ? strength <= 1
-                                    ? "bg-destructive"
-                                    : strength === 2
-                                      ? "bg-warning"
-                                      : strength === 3
-                                        ? "bg-info"
-                                        : "bg-success"
-                                  : "bg-muted"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className="text-[11.5px] text-muted-foreground">
-                          {watchedPw
-                            ? `Força da senha: ${strengthLabel}`
-                            : "Use 8+ caracteres com maiúsculas, números e símbolos."}
-                        </p>
-                      </div>
-
-                      <Field
-                        id="su-pw2"
-                        label="Confirmar senha"
-                        icon={<ShieldCheck className="size-4" />}
-                        error={
-                          signupForm.formState.errors.confirmPassword?.message
-                        }
-                      >
-                        <Input
-                          id="su-pw2"
-                          type={showSignupPw ? "text" : "password"}
-                          autoComplete="new-password"
-                          placeholder="Repita a senha"
-                          className="pl-9"
-                          {...signupForm.register("confirmPassword")}
-                        />
-                      </Field>
-
-                      <label className="mt-1 flex items-start gap-2.5 text-[13px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 size-4 rounded border-border accent-primary"
-                          {...signupForm.register("accept")}
-                        />
-                        <span>
-                          Concordo com o uso institucional dos dados e com o
-                          registro de auditoria desta plataforma.
-                        </span>
-                      </label>
-                      {signupForm.formState.errors.accept && (
-                        <p className="-mt-2 text-[12.5px] text-destructive">
-                          {signupForm.formState.errors.accept.message}
-                        </p>
-                      )}
-
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="mt-1 w-full"
-                        disabled={submitting}
-                      >
-                        {submitting && (
-                          <Loader2 className="mr-2 size-4 animate-spin" />
-                        )}
-                        {submitting ? "Criando conta..." : "Criar conta"}
-                      </Button>
-
-                      <p className="text-center text-[12px] text-muted-foreground">
-                        O primeiro usuário cadastrado vira{" "}
-                        <span className="font-medium text-foreground">
-                          administrador
-                        </span>{" "}
-                        automaticamente.
-                      </p>
-                    </form>
-                  </TabsContent>
-                </Tabs>
               </div>
 
               <p className="mt-6 text-center text-[12px] text-muted-foreground">

@@ -2,6 +2,7 @@ import * as React from "react";
 import { ChevronDown, ChevronUp, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -228,16 +229,16 @@ export function DataTable<T>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell
-                  colSpan={totalColSpan}
-                  className="py-10 text-center text-[13px] text-muted-foreground"
-                >
-                  Carregando...
-                </TableCell>
-              </TableRow>
-            )}
+            {isLoading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={`sk-${i}`}>
+                  {Array.from({ length: totalColSpan }).map((_, j) => (
+                    <TableCell key={j} className="py-2">
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
             {!isLoading &&
               pagedData.map((row, i) => {
                 const id = getRowId(row, i);

@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-10-29 (RPCs de lista/dashboard + `get_secretarias_cpfs` com filtro)  
+**Data:** 2026-10-29 (SSE compartilhado, sync M2A unificado, Excel lazy/worker, Start removido)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método
@@ -49,8 +49,7 @@
 2. **Query keys exatas** — dispersas nos hooks; não catalogadas uma a uma.
 3. **Regras de negócio finas** nos orquestradores worker (`processos.js` ~1.5k linhas) — endpoints mapeados, lógica interna resumida.
 4. **Autorização por rota/papel** — roles carregadas no auth; restrições por página podem estar só na UI/RLS.
-5. **`auth-middleware.ts` / Start** — possível legado; runtime confirmado como Vite SPA.
-6. **Graphify** — ausente; dependências call-graph não automatizadas.
+5. **Graphify** — ausente; dependências call-graph não automatizadas.
 
 ## Manutenção incremental
 

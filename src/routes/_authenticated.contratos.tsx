@@ -30,7 +30,7 @@ import {
  TableHeader,
  TableRow,
 } from"@/components/ui/table";
-import { TablePagination, usePaginatedRows } from"@/components/ui/table-pagination";
+import { TablePagination } from"@/components/ui/table-pagination";
 import {
  Dialog,
  DialogContent,
@@ -99,7 +99,9 @@ import { ContractReportGenerator } from"@/components/contratos/ContractReportGen
 import { PautaConsolidadaExporter } from"@/components/contratos/PautaConsolidadaExporter";
 import { DocumentSelectorDialog, type DocumentTypeOption, M2A_DOC_TYPES } from "@/components/contratos/DocumentSelectorDialog";
 import { formatDateBR } from "@/lib/format-date";
-import { fetchAllPages } from "@/lib/supabase-page";
+import { fetchPage } from "@/lib/supabase-page";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { formatBRL } from "@/lib/utils/normalize";
 
 export const Route = createFileRoute("/_authenticated/contratos")({
  component: Page,
@@ -111,10 +113,7 @@ export const Route = createFileRoute("/_authenticated/contratos")({
  }),
 });
 
-const BRL = new Intl.NumberFormat("pt-BR", {
- style:"currency",
- currency:"BRL",
-});
+const BRL = { format: formatBRL };
 
 const STATUS = ["ativo","encerrado","cancelado","rascunho"] as const;
 const M2A_STATUS = ["pendente","processando","sucesso","enviado","erro",
@@ -193,9 +192,12 @@ function Page() {
  const isDetailRoute = pathname !=="/contratos";
 
  const [search, setSearch] = useState("");
+ const debouncedSearch = useDebouncedValue(search, 350);
  const [secFilter, setSecFilter] = useState<string>("__all");
  const [m2aFilter, setM2aFilter] = useState<string>("__all");
  const [pubFilter, setPubFilter] = useState<string>("__all");
+ const [contratosPage, setContratosPage] = useState(0);
+ const [contratosPageSize, setContratosPageSize] = useState(25);
  const [togglingPub, setTogglingPub] = useState<string | null>(null);
  const [open, setOpen] = useState(false);
  const [deleting, setDeleting] = useState<any | null>(null);
@@ -231,28 +233,29 @@ function Page() {
  ).data ?? [],
  });
 
- const { data: contratos, isLoading } = useQuery({
- queryKey: ["contratos", search, secFilter, m2aFilter, pubFilter],
+ const { data: contratosPageData, isLoading } = useQuery({
+ queryKey: ["contratos", debouncedSearch, secFilter, m2aFilter, pubFilter, contratosPage, contratosPageSize],
  enabled: !isDetailRoute,
  queryFn: async () => {
- const list = await fetchAllPages<any>(async (from, to) => {
+ const { rows, total } = await fetchPage<any>(async (from, to) => {
  let q = supabase
  .from("contratos")
- .select("id, numero_contrato, secretaria_id, secretaria_sigla, secretaria_nome, fornecedor_nome, preposto, objeto, fiscal, data, data_texto_legado, status, status_envio_m2a, m2a_contrato_id, m2a_documentos_gerados, link_contrato, created_at, publicado, publicado_at, publicado_por, impresso_assinado",
+ .select("id, numero_contrato, secretaria_id, secretaria_sigla, secretaria_nome, fornecedor_nome, preposto, objeto, fiscal, data, data_texto_legado, status, status_envio_m2a, m2a_contrato_id, link_contrato, created_at, publicado, publicado_at, publicado_por, impresso_assinado",
+ { count: "exact" },
  )
  .is("deleted_at", null)
  .order("created_at", { ascending: false });
- if (search)
+ if (debouncedSearch)
  q = q.or(
- `numero_contrato.ilike.%${search}%,objeto.ilike.%${search}%,fornecedor_nome.ilike.%${search}%,preposto.ilike.%${search}%`,
+ `numero_contrato.ilike.%${debouncedSearch}%,objeto.ilike.%${debouncedSearch}%,fornecedor_nome.ilike.%${debouncedSearch}%,preposto.ilike.%${debouncedSearch}%`,
  );
  if (secFilter !=="__all") q = q.eq("secretaria_id", secFilter);
  if (m2aFilter !=="__all") q = q.eq("status_envio_m2a", m2aFilter);
  if (pubFilter ==="publicado") q = q.not("publicado_at","is", null);
  else if (pubFilter ==="nao_publicado") q = q.is("publicado_at", null);
  return q.range(from, to);
- });
- const ids = list.map((c: any) => c.id);
+ }, contratosPage, contratosPageSize);
+ const ids = rows.map((c: any) => c.id);
  const totals: Record<string, number> = {};
       if (ids.length) {
         const { data: totais, error: totErr } = await supabase.rpc(
@@ -265,27 +268,28 @@ function Page() {
         }
       }
 
- return list.map((c: any) => ({ ...c, valor_total: totals[c.id] ?? 0 }));
+ return {
+   rows: rows.map((c: any) => ({ ...c, valor_total: totals[c.id] ?? 0 })),
+   total,
+ };
  },
   });
 
-  const {
-    paginated: paginatedContratos,
-    page: contratosPage,
-    setPage: setContratosPage,
-    pageSize: contratosPageSize,
-    setPageSize: setContratosPageSize,
-    totalPages: contratosTotalPages,
-    total: contratosTotal,
-  } = usePaginatedRows<any>(contratos ?? [], 25);
+ const contratos = contratosPageData?.rows ?? [];
+ const contratosTotal = contratosPageData?.total ?? 0;
+ const contratosTotalPages = Math.max(1, Math.ceil(contratosTotal / Math.max(1, contratosPageSize)));
+
+ useEffect(() => {
+ setContratosPage(0);
+ setSelected(new Set());
+ }, [debouncedSearch, secFilter, m2aFilter, pubFilter, contratosPageSize]);
 
  const stats = useMemo(() => {
- const list = contratos ?? [];
  return {
- count: list.length,
- total: list.reduce((s: number, c: any) => s + c.valor_total, 0),
+ count: contratosTotal,
+ total: contratos.reduce((s: number, c: any) => s + c.valor_total, 0),
  };
- }, [contratos]);
+ }, [contratos, contratosTotal]);
 
  const hasFilters = search || secFilter !=="__all" || m2aFilter !=="__all" || pubFilter !=="__all";
 
@@ -493,9 +497,17 @@ function Page() {
 
   async function handleBulkDownloadDocumentos(selectedTypes: DocumentTypeOption[]) {
   const positions = new Set(selectedTypes.map(t => t.position));
-  const docs = (contratos ?? [])
-  .filter((contrato: any) => selected.has(contrato.id))
-  .flatMap((contrato: any) => {
+  const ids = Array.from(selected);
+  if (!ids.length) return;
+  const { data: docRows, error: docErr } = await supabase
+    .from("contratos")
+    .select("id, numero_contrato, m2a_contrato_id, m2a_documentos_gerados")
+    .in("id", ids);
+  if (docErr) {
+    notify.error(docErr.message);
+    return;
+  }
+  const docs = (docRows ?? []).flatMap((contrato: any) => {
     if (!Array.isArray(contrato.m2a_documentos_gerados)) return [];
     return (contrato.m2a_documentos_gerados as any[])
       .map((item, index) => {
@@ -947,7 +959,7 @@ function Page() {
  </TableCell>
  </TableRow>
  )}
- {paginatedContratos.map((c: any) => (
+ {contratos.map((c: any) => (
  <TableRow
  key={c.id}
  className="cursor-pointer hover:bg-muted/50"
@@ -1141,7 +1153,7 @@ function Page() {
  colSpan={2}
  className="py-2 text-right text-[11px] text-muted-foreground pr-4"
  >
- Soma total
+ Soma da página
  </TableCell>
  </TableRow>
  </TableFooter>

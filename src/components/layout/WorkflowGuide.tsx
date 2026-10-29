@@ -1,4 +1,4 @@
-import type { ReactNode } from"react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from"@tanstack/react-router";
 import {
  ArrowRight,
@@ -51,12 +51,31 @@ const defaultSteps: WorkflowStep[] = [
 	},
 ];
 
+const STORAGE_KEY = "planeja.workflow-guide";
+
 export function WorkflowGuide({
 	title = "Fluxo recomendado",
 	steps = defaultSteps,
 	aside,
 	compact = false,
 }: WorkflowGuideProps) {
+	const [open, setOpen] = useState(() => {
+		if (compact) return true;
+		try {
+			return localStorage.getItem(STORAGE_KEY) !== "0";
+		} catch {
+			return true;
+		}
+	});
+	useEffect(() => {
+		if (compact) return;
+		try {
+			localStorage.setItem(STORAGE_KEY, open ? "1" : "0");
+		} catch {
+			/* ignore */
+		}
+	}, [open, compact]);
+
 	const wrapperClass = compact
 		? "flex flex-col gap-3"
 		: "mb-6 rounded-lg border border-border/60 bg-card p-4";
@@ -70,20 +89,28 @@ export function WorkflowGuide({
 		<section className={wrapperClass}>
 			<div className={innerClass}>
 				{!compact && (
-					<div className="flex min-w-0 items-center gap-3">
+					<button
+						type="button"
+						onClick={() => setOpen((v) => !v)}
+						className="flex min-w-0 items-center gap-3 text-left"
+						aria-expanded={open}
+					>
 						<div className="hidden h-10 w-1 rounded-full bg-primary md:block" />
 						<div className="min-w-0">
 							<h2 className="text-sm font-semibold text-foreground">
 								{title}
 							</h2>
 							<p className="line-clamp-2 text-sm text-muted-foreground">
-								Use esta sequência para sair da planilha e chegar ao contrato
-								enviado, sem voltar procurando a próxima etapa.
+								{open
+									? "Use esta sequência para sair da planilha e chegar ao contrato enviado."
+									: "Clique para ver o fluxo recomendado."}
 							</p>
 						</div>
-					</div>
+					</button>
 				)}
 
+				{(compact || open) && (
+				<>
 				<div className={gridClass}>
 
  {steps.map((step, index) => {
@@ -138,7 +165,9 @@ export function WorkflowGuide({
  </div>
 
  {aside && <div className="shrink-0">{aside}</div>}
- </div>
- </section>
- );
+				</>
+				)}
+			</div>
+		</section>
+	);
 }

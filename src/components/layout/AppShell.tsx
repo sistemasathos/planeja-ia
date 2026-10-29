@@ -1,24 +1,11 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  Building2,
-  FileText,
-  FileSignature,
-  FileSpreadsheet,
-  History,
-  ScrollText,
   LogOut,
-  Hash,
   ChevronRight,
   ChevronDown,
-  FileUp,
   Menu,
   Search,
-  Users,
-  UserCheck,
-  HandCoins,
-  ClipboardList,
   Download,
   PanelLeftClose,
   PanelLeftOpen,
@@ -46,64 +33,7 @@ import { exportFullSystem, setupDailyBackup } from "@/lib/system-export";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-
-type NavItem = {
-  to: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  adminOnly?: boolean;
-};
-
-type NavGroup = {
-  label: string;
-  icon: typeof LayoutDashboard;
-  items: NavItem[];
-};
-
-type NavEntry = NavItem | NavGroup;
-
-const nav: NavEntry[] = [
-  {
-    label: "Operação",
-    icon: LayoutDashboard,
-    items: [
-      { to: "/dashboard", label: "Painel geral", icon: LayoutDashboard },
-      { to: "/processos", label: "Processos", icon: FileText },
-      { to: "/contratos", label: "Contratos", icon: FileSignature },
-    ],
-  },
-  {
-    label: "Importação",
-    icon: FileUp,
-    items: [
-      { to: "/irp", label: "Importação de Processos", icon: FileSpreadsheet },
-      {
-        to: "/importar-contratos",
-        label: "Importação de Contratos",
-        icon: FileUp,
-      },
-      { to: "/historico", label: "Histórico", icon: History },
-    ],
-  },
-  {
-    label: "Cadastros",
-    icon: ClipboardList,
-    items: [
-      { to: "/secretarias", label: "Secretarias", icon: Building2 },
-      { to: "/fornecedores", label: "Fornecedores", icon: HandCoins },
-      { to: "/fiscais", label: "Fiscais", icon: UserCheck },
-      { to: "/gestores", label: "Gestores", icon: Users },
-    ],
-  },
-  {
-    label: "Sistema",
-    icon: ScrollText,
-    items: [
-      { to: "/numeracao", label: "Numeração", icon: Hash },
-      { to: "/logs", label: "Auditoria", icon: ScrollText, adminOnly: true },
-    ],
-  },
-];
+import { APP_NAV } from "@/components/layout/nav-config";
 
 // Suppress unused-import lint while keeping API stable
 void ChevronRight;
@@ -121,7 +51,7 @@ function NavList({
   onNavigate?: () => void;
 }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-  const visibleNav = nav
+  const visibleNav = APP_NAV
     .map((entry) => {
       if ("items" in entry) {
         return {
@@ -309,6 +239,11 @@ export function AppShell({
       });
       return;
     }
+    const ok = await notify.confirmAsync(
+      "Exportar o sistema completo agora? Inclui dados operacionais.",
+      { confirmLabel: "Exportar", cancelLabel: "Cancelar" },
+    );
+    if (!ok) return;
     setExportingSystem(true);
     setExportStep("Iniciando...");
     const toastId = notify.loading("Exportando sistema...", {
@@ -538,7 +473,7 @@ export function AppShell({
             </div>
             <div className="flex items-center justify-end gap-3 font-mono">
             <span>SITE {siteVersion}</span>
-            <span>WORKER {extensionVersion}</span>
+            <span>API {extensionVersion}</span>
             </div>
           </div>
         </footer>

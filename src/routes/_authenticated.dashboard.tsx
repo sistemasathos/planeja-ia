@@ -1,6 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { routeHead } from "@/lib/utils/route-head";
-import { appPath } from "@/lib/utils/app-path";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkflowGuide } from "@/components/layout/WorkflowGuide";
@@ -59,6 +58,7 @@ function relativeTime(iso?: string | null): string {
 }
 
 function Dashboard() {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-v2"],
     queryFn: async () => {
@@ -167,7 +167,7 @@ function Dashboard() {
           description="Sincronize com o M2A, gere pautas consolidadas e mantenha as secretarias sempre atualizadas — sem retrabalho."
           cta="Ir para processos"
           onCtaClick={() => {
-            window.location.href = appPath("/processos");
+            void navigate({ to: "/processos" });
           }}
         />
 

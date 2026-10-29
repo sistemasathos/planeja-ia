@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { routeHead } from "@/lib/utils/route-head";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
@@ -7,13 +7,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ScrollText } from "lucide-react";
+import { formatDateTimeBR } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/logs")({
+  beforeLoad: async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      throw redirect({ to: "/login", search: { redirect: "/logs" } });
+    }
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+    const roles = (data ?? []).map((r) => String(r.role));
+    if (!roles.includes("admin") && !roles.includes("gestor")) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   component: Page,
   head: () =>
     routeHead({
       path: "/logs",
-      title: "Logs",
+      title: "Auditoria",
       description:
         "Logs de auditoria e operações realizadas pelos usuários no Planeja IA.",
       noindex: true,
@@ -50,7 +67,7 @@ function Page() {
       sortAccessor: (r) => new Date(r.created_at).getTime(),
       cell: (r) => (
         <span className="text-xs text-muted-foreground">
-          {new Date(r.created_at).toLocaleString("pt-BR")}
+          {formatDateTimeBR(r.created_at)}
         </span>
       ),
     },

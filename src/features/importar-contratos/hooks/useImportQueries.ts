@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllPages } from "@/lib/supabase-page";
 import type {
   FornecedorPreposto,
   JobRow,
@@ -8,26 +9,6 @@ import type {
   ProcessoMin,
   SecretariaM2A,
 } from "../lib";
-
-const PAGE_SIZE = 1000;
-
-async function fetchAllPages<T>(
-  runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
-) {
-  const rows: T[] = [];
-
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const to = from + PAGE_SIZE - 1;
-    const { data, error } = await runPage(from, to);
-    if (error) throw error;
-
-    const page = data ?? [];
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-  }
-
-  return rows;
-}
 
 /**
  * Reúne todas as queries do módulo `importar-contratos` num único hook.

@@ -90,21 +90,23 @@ export function PautaConsolidadaExporter({
 
       // 3) Buscar dados via RPC por processo. Sempre traz TODOS os itens do processo;
       //    itens fora dos contratos selecionados vêm com quantidade 0 (flag no_contrato=true).
-      const allRaw: any[] = [];
-      for (const pid of resolvedProcessoIds) {
-        const contratoIdsForRpc = selectedContractIds
-          ? Array.from(selectedContractIds)
-          : null;
-        const { data, error } = await supabase.rpc(
-          "get_pauta_consolidada_full" as any,
-          { p_processo_id: pid, p_contrato_ids: contratoIdsForRpc },
-        );
-        if (error) throw error;
-        const rows = (data as any[]) ?? [];
-        for (const r of rows) {
-          allRaw.push({ ...r, processo_nome: nomeByProcessoId.get(pid) || pid });
-        }
-      }
+      const contratoIdsForRpc = selectedContractIds
+        ? Array.from(selectedContractIds)
+        : null;
+      const pages = await Promise.all(
+        resolvedProcessoIds.map(async (pid) => {
+          const { data, error } = await supabase.rpc(
+            "get_pauta_consolidada_full" as any,
+            { p_processo_id: pid, p_contrato_ids: contratoIdsForRpc },
+          );
+          if (error) throw error;
+          return ((data as any[]) ?? []).map((r) => ({
+            ...r,
+            processo_nome: nomeByProcessoId.get(pid) || pid,
+          }));
+        }),
+      );
+      const allRaw = pages.flat();
 
 
       if (allRaw.length === 0) {

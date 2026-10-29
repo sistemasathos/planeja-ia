@@ -235,7 +235,7 @@ function Page() {
       <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
         <Card className="border-border/60">
           <CardHeader className="pb-3">
-            <CardTitle>Novo vínculo</CardTitle>
+            <CardTitle>{editing.id ? "Editar vínculo" : "Novo vínculo"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">

@@ -2,6 +2,7 @@
 // Reaproveita os tipos do fluxo SRP, mas dispensa data_consolidacao.
 
 import { supabase } from "@/integrations/supabase/client";
+import { readSseStream } from "./sse";
 import type {
   M2ASrpItemIRP,
   M2ASrpSecretariaParticipante,
@@ -94,33 +95,11 @@ export async function criarProcessoComumM2A(
     );
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
   try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) !== -1) {
-        const block = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const lines = block.split("\n");
-        let event = "message";
-        const dataLines: string[] = [];
-        for (const ln of lines) {
-          if (ln.startsWith("event:")) event = ln.slice(6).trim();
-          else if (ln.startsWith("data:")) dataLines.push(ln.slice(5).trim());
-        }
-        if (!dataLines.length) continue;
-        let data: any = null;
-        try {
-          data = JSON.parse(dataLines.join("\n"));
-        } catch {
-          data = { raw: dataLines.join("\n") };
-        }
+    await readSseStream(
+      res.body,
+      (event, raw) => {
+        const data = raw && typeof raw === "object" ? (raw as any) : {};
         if (event === "start")
           onEvent({ type: "start", mensagem: data?.mensagem ?? "" });
         else if (event === "progress")
@@ -154,8 +133,9 @@ export async function criarProcessoComumM2A(
             type: "error",
             error: String(data?.error ?? "erro desconhecido"),
           });
-      }
-    }
+      },
+      signal,
+    );
   } catch (err: any) {
     if (err?.name === "AbortError") {
       onEvent({ type: "cancelled", mensagem: "Envio cancelado." });

@@ -7,7 +7,7 @@ Contagem aproximada: **252** arquivos `.ts`/`.tsx` em `src/`, **373** arquivos f
 | Arquivo | Path HTTP | Notas |
 |---------|-----------|--------|
 | `index.tsx` | `/` | Redireciona para `/dashboard` ou `/login` |
-| `login.tsx` | `/login` | Auth email/senha; `search.redirect` |
+| `login.tsx` | `/login` | Auth email/senha (sem auto-cadastro); `search.redirect` |
 | `reset-password.tsx` | `/reset-password` | Recuperação de senha |
 | `_authenticated.tsx` | layout | `beforeLoad`: sessão Supabase + `tryRestoreFromTrustedDevice` |
 | `_authenticated.dashboard.tsx` | `/dashboard` | KPIs / agenda |
@@ -23,8 +23,8 @@ Contagem aproximada: **252** arquivos `.ts`/`.tsx` em `src/`, **373** arquivos f
 | `_authenticated.fornecedores.tsx` | `/fornecedores` | Prepostos/fornecedores |
 | `_authenticated.fiscais.tsx` | `/fiscais` | Catálogo servidores (cargo FISCAL) |
 | `_authenticated.gestores.tsx` | `/gestores` | Catálogo servidores (cargo GESTOR) |
-| `_authenticated.historico.tsx` | `/historico` | Histórico operacional |
-| `_authenticated.logs.tsx` | `/logs` | Audit logs |
+| `_authenticated.historico.tsx` | `/historico` | Jobs IRP (processamentos anteriores) |
+| `_authenticated.logs.tsx` | `/logs` | Audit logs (gestor/admin) |
 
 Gerado: `src/routeTree.gen.ts` (não editar manualmente).
 
@@ -77,7 +77,7 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 |------|------------------|
 | `useProcessoDetalhe` | Query processo |
 | `useProcessoForm` | Edição + sync M2A |
-| `useSincronizarProcessoM2A` | `fetchProcessoFromWorker` |
+| `useSincronizarProcessoM2A` | Sync documentos/itens M2A (`lib/m2a/sincronizar-contrato`) |
 | `useEnviarContratosM2A` | Envio em lote |
 | `useDownloadDocumentos` | `downloadM2ADocuments` |
 | `useItensConsolidados` | Itens consolidados |
@@ -103,9 +103,10 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 | `contrato-numbering.ts` | `parseContratoSequencia`, `getNextContratoNumbers` |
 | `contratoImport.ts` | `parseContratoXlsx`, `agruparContratos`, tipos `ParsedItem`, `ContratoPreliminar` |
 | `irp.ts` | `analisar`, `gerarPlanilhaSecretaria`, tipos `AnaliseIRP` |
-| `excel-export.ts` | `exportarRelatorioContratoExcel`, `exportarPautaConsolidadaExcel`, `prepararDadosPautaConsolidada` |
+| `excel-export.ts` | `exportarRelatorioContratoExcel`, `exportarPautaConsolidadaExcel`, `prepararDadosPautaConsolidada` (exceljs lazy) |
 | `export.ts` | `downloadCSV` |
-| `workbook.ts` | Leitura matriz XLSX (usado por import/IRP) |
+| `workbook.ts` | `readXlsxMatrix` — worker `xlsx-parse.worker.ts` + fallback |
+| `xlsx-matrix.ts` | Parse ExcelJS → matriz (usado pelo worker e fallback) |
 | `error-handler.ts` | `handleGlobalError` |
 | `notify.ts` | Toasts Sonner |
 | `query-client.ts` | `queryClient` singleton |
@@ -127,6 +128,8 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 | `srp.ts` | `criarProcessoSrpM2A` |
 | `comum.ts` | `criarProcessoComumM2A` |
 | `documents.ts` | `downloadM2ADocuments` |
+| `sse.ts` | `consumeSseBuffer`, `readSseStream` |
+| `sincronizar-contrato.ts` | Sync itens/docs M2A (hooks de processo e contrato) |
 | `atas.ts` | Participantes, saldos por secretaria (via worker) |
 | `orgaos-mapping.ts` | Mapeamento órgãos/UO IRP |
 | `normSec.ts` | Normalização nome secretaria |
@@ -163,9 +166,7 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 | Arquivo | Papel |
 |---------|--------|
 | `client.ts` | Browser client tipado `Database` |
-| `client.server.ts` | Client server-side (se usado) |
 | `types.ts` | Schema gerado: tabelas, enums, RPC |
-| `auth-middleware.ts`, `auth-attacher.ts` | Middleware TanStack Start (legado/alternativo) |
 
 ## Postgres (via `types.ts`) — tabelas
 

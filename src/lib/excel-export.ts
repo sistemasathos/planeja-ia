@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs';
 import type { Cell, Worksheet } from 'exceljs';
 import * as FileSaver from 'file-saver';
 
@@ -140,6 +139,7 @@ const formatTechnicalDesc = (v?: string | null) => {
 export async function exportarRelatorioContratoExcel(contracts: ContractGroupedData[], isBatch: boolean = false): Promise<void> {
   if (!contracts || contracts.length === 0) return;
 
+  const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Planeja GovTech';
   workbook.created = new Date();
@@ -405,6 +405,7 @@ export async function exportarPautaConsolidadaExcel(
 ): Promise<void> {
   if (!processes || processes.length === 0) return;
 
+  const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Planeja GovTech';
   workbook.created = new Date();

@@ -1,3 +1,11 @@
+export function formatDateTimeBR(value?: string | null) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString("pt-BR");
+}
+
 export function formatDateBR(value?: string | null) {
   const raw = String(value ?? "").trim();
   if (!raw) return "Sem data";

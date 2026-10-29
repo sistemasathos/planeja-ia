@@ -10,33 +10,8 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  LayoutDashboard,
-  FileText,
-  FileSignature,
-  FileSpreadsheet,
-  History,
-  Building2,
-  Hash,
-  ScrollText,
-  FileUp,
-  Users,
-  UserCheck,
-} from "lucide-react";
-
-const STATIC_PAGES = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/processos", label: "Processos", icon: FileText },
-  { to: "/contratos", label: "Contratos", icon: FileSignature },
-  { to: "/importar-contratos", label: "Importar contratos", icon: FileUp },
-  { to: "/irp", label: "Importação IRP", icon: FileSpreadsheet },
-  { to: "/historico", label: "Histórico", icon: History },
-  { to: "/secretarias", label: "Secretarias", icon: Building2 },
-  { to: "/fiscais", label: "Fiscais", icon: UserCheck },
-  { to: "/gestores", label: "Gestores", icon: Users },
-  { to: "/numeracao", label: "Numeração", icon: Hash },
-  { to: "/logs", label: "Auditoria", icon: ScrollText },
-];
+import { useAuth } from "@/hooks/useAuth";
+import { flattenNavPages } from "@/components/layout/nav-config";
 
 type Hit = {
   kind: "contrato" | "processo" | "secretaria";
@@ -62,6 +37,8 @@ export function CommandPalette({
   onOpenChange: (o: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const { isGestor } = useAuth();
+  const pages = flattenNavPages(isGestor);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -190,7 +167,7 @@ export function CommandPalette({
         <CommandSeparator />
 
         <CommandGroup heading="Páginas">
-          {STATIC_PAGES.map((p) => {
+          {pages.map((p) => {
             const Icon = p.icon;
             return (
               <CommandItem key={p.to} value={p.label} onSelect={() => go(p.to)}>

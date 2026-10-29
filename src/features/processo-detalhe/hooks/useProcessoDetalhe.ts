@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { formatM2AQuantity } from "@/lib/m2a";
+import { fetchAllPages } from "@/lib/supabase-page";
 import {
   compareStrictItemOrder,
   type ContratoItemM2A,
@@ -50,10 +51,8 @@ export function useProcessoDetalhe(id: string) {
         // pode ter milhares de contrato_itens (ex.: 4k+). Sem paginação,
         // contratos além do corte apareciam com R$ 0,00 e sem itens no envio
         // ao portal ("Contrato sem itens para envio").
-        const PAGE = 1000;
-        const itens: any[] = [];
-        for (let from = 0; ; from += PAGE) {
-          const { data: page, error: itensError } = await supabase
+        const itens = await fetchAllPages((from, to) =>
+          supabase
             .from("contrato_itens")
             .select(
               "contrato_id, numero_item, ordem_item, descricao, m2a_item_id, quantidade, unidade, valor_unitario, valor_total",
@@ -61,28 +60,25 @@ export function useProcessoDetalhe(id: string) {
             .in("contrato_id", contratoIds)
             .order("contrato_id", { ascending: true })
             .order("id", { ascending: true })
-            .range(from, from + PAGE - 1);
-          if (itensError) throw itensError;
-          const rows = page ?? [];
-          itens.push(...rows);
-          if (rows.length < PAGE) break;
-        }
-
+            .range(from, to),
+        );
 
         const m2aItemIds = [
           ...new Set(
-            (itens ?? [])
+            itens
               .map((it) => String(it.m2a_item_id ?? "").trim())
               .filter(Boolean),
           ),
         ];
         const m2aNumeroByItemId = new Map<string, string>();
-        if (m2aItemIds.length > 0) {
+        const ID_CHUNK = 100;
+        for (let i = 0; i < m2aItemIds.length; i += ID_CHUNK) {
+          const slice = m2aItemIds.slice(i, i + ID_CHUNK);
           const { data: m2aItens, error: m2aItensError } = await supabase
             .from("m2a_itens")
             .select("m2a_item_id, numero_item")
             .eq("processo_id", id)
-            .in("m2a_item_id", m2aItemIds);
+            .in("m2a_item_id", slice);
           if (m2aItensError) throw m2aItensError;
           for (const item of m2aItens ?? []) {
             m2aNumeroByItemId.set(

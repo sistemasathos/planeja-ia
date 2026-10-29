@@ -2,17 +2,20 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
-import { FileText, Download, Loader2, FileSpreadsheet } from "lucide-react";
+import { FileText, Loader2, FileSpreadsheet } from "lucide-react";
 import { formatBRL, formatNumber } from "@/lib/utils/normalize";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { exportarRelatorioContratoExcel, ContractGroupedData, ContractReportData, groupContractData } from "@/lib/excel-export";
 
 // Helper function to add a single contract's data to a jsPDF document
 // Mirrors EXACTLY the XLSX export (exportarRelatorioContratoExcel):
 // - Same header rows (Tipo, Nº Contrato, Secretaria, Fornecedor, Objeto, Dotação, Data de Criação)
 // - Same table columns (Ordem, Lote, Descrição=especificação, Especificação=descricao, Unidade, Qtd, Vlr Unit, Vlr Total)
-const addContractToPdf = (contract: ContractGroupedData, doc: jsPDF, startY: number): number => {
+const addContractToPdf = (
+  contract: ContractGroupedData,
+  doc: import("jspdf").jsPDF,
+  autoTable: typeof import("jspdf-autotable").default,
+  startY: number,
+): number => {
   let currentY = startY;
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 14;
@@ -150,24 +153,33 @@ export function ContractReportGenerator({ contractIds, isBatch = false, buttonCl
       return;
     }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    let currentY = 14;
+    try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import("jspdf"),
+        import("jspdf-autotable"),
+      ]);
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      let currentY = 14;
 
-    contracts.forEach((contract, index) => {
-      if (index > 0) {
-        doc.addPage();
-        currentY = 14;
-      }
-      currentY = addContractToPdf(contract, doc, currentY);
-    });
+      contracts.forEach((contract, index) => {
+        if (index > 0) {
+          doc.addPage();
+          currentY = 14;
+        }
+        currentY = addContractToPdf(contract, doc, autoTable, currentY);
+      });
 
-    const fileName = isBatch 
-      ? `contratos_relatorio_lote_${new Date().toISOString().slice(0, 10)}.pdf`
-      : `contrato_${contracts[0].header.numero_contrato?.replace(/[\\/*?:[\]]/g, '_') || 'relatorio'}.pdf`;
+      const fileName = isBatch 
+        ? `contratos_relatorio_lote_${new Date().toISOString().slice(0, 10)}.pdf`
+        : `contrato_${contracts[0].header.numero_contrato?.replace(/[\\/*?:[\]]/g, '_') || 'relatorio'}.pdf`;
 
-    doc.save(fileName);
-    notify.success("Relatório PDF gerado com sucesso!");
-    setLoadingPdf(false);
+      doc.save(fileName);
+      notify.success("Relatório PDF gerado com sucesso!");
+    } catch (e: any) {
+      notify.error("Erro ao exportar PDF", { description: e.message });
+    } finally {
+      setLoadingPdf(false);
+    }
   };
 
   return (

@@ -30,7 +30,7 @@ import {
  TableHeader,
  TableRow,
 } from"@/components/ui/table";
-import { TablePagination, usePaginatedRows } from"@/components/ui/table-pagination";
+import { TablePagination } from"@/components/ui/table-pagination";
 import {
  Dialog,
  DialogContent,
@@ -82,7 +82,8 @@ import { extractM2AProcessoId } from"@/lib/m2a";
 import { downloadCSV } from"@/lib/export";
 import { Skeleton } from"@/components/ui/skeleton";
 import { PautaConsolidadaExporter } from"@/components/contratos/PautaConsolidadaExporter";
-import { fetchAllPages } from "@/lib/supabase-page";
+import { fetchPage } from "@/lib/supabase-page";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export const Route = createFileRoute("/_authenticated/processos")({
  component: Page,
@@ -169,7 +170,10 @@ function Page() {
  });
  const isDetailRoute = pathname !=="/processos";
  const [search, setSearch] = useState("");
+ const debouncedSearch = useDebouncedValue(search, 350);
  const [modalidadeFilter, setModalidadeFilter] = useState<string>("__all");
+ const [processosPage, setProcessosPage] = useState(0);
+ const [processosPageSize, setProcessosPageSize] = useState(25);
  const [open, setOpen] = useState(false);
  const [editing, setEditing] = useState<any | null>(null);
  const [deleting, setDeleting] = useState<any | null>(null);
@@ -197,40 +201,34 @@ function Page() {
  }
  }, [editing, form]);
 
- const { data: processos, isLoading } = useQuery({
- queryKey: ["processos", search, modalidadeFilter],
+ const { data: processosPageData, isLoading } = useQuery({
+ queryKey: ["processos", debouncedSearch, modalidadeFilter, processosPage, processosPageSize],
  enabled: !isDetailRoute,
  queryFn: async () => {
- return fetchAllPages<any>(async (from, to) => {
+ return fetchPage<any>(async (from, to) => {
  let q = supabase
  .from("processos")
- .select("id, numero_processo, ano, modalidade, objeto, status, data_abertura, observacoes, m2a_url, m2a_processo_id, created_at")
+ .select("id, numero_processo, ano, modalidade, objeto, status, data_abertura, observacoes, m2a_url, m2a_processo_id, created_at", { count: "exact" })
  .is("deleted_at", null)
  .order("created_at", { ascending: false });
- if (search)
- q = q.or(`numero_processo.ilike.%${search}%,objeto.ilike.%${search}%`);
+ if (debouncedSearch)
+ q = q.or(`numero_processo.ilike.%${debouncedSearch}%,objeto.ilike.%${debouncedSearch}%`);
  if (modalidadeFilter !=="__all") {
  q = q.ilike("numero_processo", `%-${modalidadeFilter}`);
  }
  return q.range(from, to);
- });
+ }, processosPage, processosPageSize);
  },
  });
 
-  const {
-    paginated: paginatedProcessos,
-    page: processosPage,
-    setPage: setProcessosPage,
-    pageSize: processosPageSize,
-    setPageSize: setProcessosPageSize,
-    totalPages: processosTotalPages,
-    total: processosTotal,
-  } = usePaginatedRows<any>(processos ?? [], 25);
-
+ const processos = processosPageData?.rows ?? [];
+ const processosTotal = processosPageData?.total ?? 0;
+ const processosTotalPages = Math.max(1, Math.ceil(processosTotal / Math.max(1, processosPageSize)));
 
  useEffect(() => {
+ setProcessosPage(0);
  setSelected(new Set());
- }, [processos]);
+ }, [debouncedSearch, modalidadeFilter, processosPageSize]);
 
  async function onSubmit(v: FormValues) {
  const parsed = parseNumeroProcesso(v.numero_processo);
@@ -692,7 +690,7 @@ function Page() {
  </TableCell>
  </TableRow>
  )}
- {paginatedProcessos.map((p: any) => {
+ {processos.map((p: any) => {
  const parsed = parseNumeroProcesso(p.numero_processo);
  const objetoResumo = resumirObjetoProcesso(p.objeto);
  return (

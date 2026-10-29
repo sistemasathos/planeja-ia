@@ -4,6 +4,7 @@ import { FileSpreadsheet, Upload } from "lucide-react";
 import { routeHead } from "@/lib/utils/route-head";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { useProgress } from "@/contexts/ProgressContext";
 import { IrpCabecalhoCard } from "@/components/irp/IrpCabecalhoCard";
 import { IrpConfirmacaoProcessoModal } from "@/components/irp/IrpConfirmacaoProcessoModal";
 import {
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/_authenticated/irp")({
 function Page() {
   const search = Route.useSearch();
   const navigate = useNavigate();
+  const progress = useProgress();
 
   // ---------- Estado local mínimo ----------
   const [jobId, setJobId] = useState<string | null>(null);
@@ -303,8 +305,11 @@ function Page() {
                 <IrpProcessoM2AProgress
                   visible={enviarM2A.busy}
                   etapa="Envio M2A"
-                  mensagem="Acompanhe o progresso detalhado na barra global."
-                  percent={0}
+                  mensagem={
+                    progress.statusText ||
+                    "Acompanhe o progresso detalhado na barra global."
+                  }
+                  percent={enviarM2A.busy ? progress.progress : 0}
                 />
 
                 {jobId && (analise || resultadoSalvo) && (

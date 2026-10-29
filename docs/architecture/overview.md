@@ -19,7 +19,7 @@
 | Planilhas / PDF | exceljs, jszip, jspdf |
 | Package manager | Bun (`bun.lock`, `bunfig.toml`) |
 
-**Nota:** `@tanstack/react-start` aparece em `package.json` e em `src/integrations/supabase/auth-*.ts`; o **ponto de entrada atual** é SPA Vite (`index.html` → `src/main.tsx`), não Vinxi/Start.
+**Nota:** o ponto de entrada é SPA Vite (`index.html` → `src/main.tsx`), não Vinxi/Start.
 
 ## Pontos de entrada
 

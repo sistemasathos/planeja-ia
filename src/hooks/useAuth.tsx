@@ -1,7 +1,9 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   ReactNode,
 } from "react";
@@ -55,9 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // - SIGNED_OUT: limpa completamente o cache para não vazar dados entre sessões.
       switch (event) {
         case "SIGNED_IN":
-        case "TOKEN_REFRESHED":
         case "USER_UPDATED":
           queryClient.invalidateQueries();
+          break;
+        case "TOKEN_REFRESHED":
           break;
         case "SIGNED_OUT":
           queryClient.cancelQueries();
@@ -99,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles((data ?? []).map((r: any) => r.role as Role));
   }
 
-  async function signOut() {
+  const signOut = useCallback(async () => {
     try {
       await revokeCurrentTrustedDevice();
     } catch {
@@ -107,21 +110,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     clearTrustedToken();
     await supabase.auth.signOut();
-  }
+  }, []);
 
+  const value = useMemo(
+    () => ({
+      user,
+      session,
+      loading,
+      roles,
+      isAdmin: roles.includes("admin"),
+      isGestor: roles.includes("admin") || roles.includes("gestor"),
+      signOut,
+    }),
+    [user, session, loading, roles, signOut],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        roles,
-        isAdmin: roles.includes("admin"),
-        isGestor: roles.includes("admin") || roles.includes("gestor"),
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

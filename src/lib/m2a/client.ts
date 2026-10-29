@@ -9,6 +9,7 @@
 // só que agora os eventos são gerados pelos handlers SSE deste módulo.
 
 import { supabase } from "@/integrations/supabase/client";
+import { readSseStream } from "./sse";
 
 // ============================================================
 // Tipos públicos (idênticos à versão anterior)
@@ -162,47 +163,26 @@ async function callProxySse(
     cb.onError?.(text || `HTTP ${res.status}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    if (signal?.aborted) {
-      void reader.cancel().catch(() => undefined);
+  try {
+    await readSseStream(
+      res.body,
+      (event, data) => {
+        const parsed =
+          data && typeof data === "object"
+            ? (data as Record<string, unknown>)
+            : { raw: data };
+        if (event === "progress") cb.onProgress?.(parsed);
+        else if (event === "done") cb.onDone?.(parsed);
+        else if (event === "error")
+          cb.onError?.(String(parsed.error ?? "Erro no worker"), parsed);
+      },
+      signal,
+    );
+  } catch (err) {
+    if (signal?.aborted || (err as { name?: string })?.name === "AbortError") {
       return;
     }
-    let value: Uint8Array | undefined;
-    let done = false;
-    try {
-      ({ value, done } = await reader.read());
-    } catch (err) {
-      if (signal?.aborted) return;
-      throw err;
-    }
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buffer.indexOf("\n\n")) >= 0) {
-      const raw = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      const lines = raw.split("\n");
-      let event = "message";
-      const dataLines: string[] = [];
-      for (const line of lines) {
-        if (line.startsWith("event:")) event = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-      }
-      if (!dataLines.length) continue;
-      let parsed: Record<string, unknown> = {};
-      try {
-        parsed = JSON.parse(dataLines.join("\n"));
-      } catch {
-        parsed = { raw: dataLines.join("\n") };
-      }
-      if (event === "progress") cb.onProgress?.(parsed);
-      else if (event === "done") cb.onDone?.(parsed);
-      else if (event === "error")
-        cb.onError?.(String(parsed.error ?? "Erro no worker"), parsed);
-    }
+    throw err;
   }
 }
 

@@ -7,6 +7,7 @@
 import { saveAs } from "file-saver";
 import { supabase } from "@/integrations/supabase/client";
 import type { M2ABulkDownloadDocumento, M2ABulkDownloadOptions } from "@/lib/m2a";
+import { readSseStream } from "./sse";
 
 export interface DownloadProgress {
   status:
@@ -119,37 +120,7 @@ async function consumeSSE(
   onEvent: (event: string, data: any) => void,
 ): Promise<void> {
   if (!res.body) throw new Error("Resposta sem body para SSE.");
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // Eventos SSE são separados por \n\n.
-    let sepIdx: number;
-    while ((sepIdx = buffer.indexOf("\n\n")) >= 0) {
-      const rawEvent = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
-      let eventName = "message";
-      const dataLines: string[] = [];
-      for (const line of rawEvent.split("\n")) {
-        if (line.startsWith("event:")) eventName = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-      }
-      if (!dataLines.length) continue;
-      const raw = dataLines.join("\n");
-      let parsed: any = raw;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        /* evento sem JSON — repassa string bruta */
-      }
-      onEvent(eventName, parsed);
-    }
-  }
+  await readSseStream(res.body, onEvent);
 }
 
 export async function downloadM2ADocuments(

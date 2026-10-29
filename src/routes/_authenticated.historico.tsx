@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { formatBRL, formatNumber } from "@/lib/utils/normalize";
+import { formatDateTimeBR } from "@/lib/format-date";
 import { Eye, History } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/historico")({
@@ -14,9 +15,9 @@ export const Route = createFileRoute("/_authenticated/historico")({
   head: () =>
     routeHead({
       path: "/historico",
-      title: "Histórico",
+      title: "Jobs IRP",
       description:
-        "Linha do tempo das alterações em processos, contratos e cadastros do Planeja IA.",
+        "Processamentos IRP anteriores: análises de planilha salvas para reabrir.",
       noindex: true,
     }),
 });
@@ -97,7 +98,7 @@ function Page() {
       sortAccessor: (r) => new Date(r.created_at).getTime(),
       cell: (r) => (
         <span className="text-xs text-muted-foreground">
-          {new Date(r.created_at).toLocaleString("pt-BR")}
+          {formatDateTimeBR(r.created_at)}
         </span>
       ),
     },
@@ -111,7 +112,7 @@ function Page() {
   ];
 
   return (
-    <AppShell title="Histórico" subtitle="Processamentos IRP anteriores">
+    <AppShell title="Jobs IRP" subtitle="Processamentos IRP anteriores">
       <DataTable<JobRow>
         data={data ?? []}
         columns={columns}
@@ -122,7 +123,7 @@ function Page() {
           <EmptyState
             icon={History}
             title="Nenhum processamento ainda"
-            description="As análises IRP concluídas aparecerão neste histórico."
+            description="As análises IRP concluídas aparecerão aqui. Importe em Importação de Processos."
           />
         }
         rowActions={(r) => (
