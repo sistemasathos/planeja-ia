@@ -23,21 +23,6 @@ async function callProxyJson<T = unknown>(
   return data as T;
 }
 
-/* ---------- Participantes (status incluído/não) ---------- */
-
-export type ParticipanteAta = {
-  participanteId: number | null;
-  nome: string;
-  incluido: boolean;
-};
-
-export function fetchParticipantesAta(ataId: string) {
-  return callProxyJson<{ ataId: string; participantes: ParticipanteAta[] }>(
-    `/atas/${ataId}/participantes`,
-    "GET",
-  );
-}
-
 /* ---------- Saldos por secretaria (cota − consumo) ---------- */
 
 export type SaldoItemPorSecretaria = {

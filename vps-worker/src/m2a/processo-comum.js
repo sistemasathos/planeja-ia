@@ -573,13 +573,12 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
     `[reordenarItensProcesso] processo ${processoId}: ${atual.length} item(ns) no portal; ${desejada.length} posição(ões) desejada(s).`,
   );
 
-  // Para cada item desejado, na ordem, garantir que esteja na posição N+1.
-  // Como o portal renumera ao mover, iteramos sempre relendo a tabela.
+  // Relê a tabela só depois de um POST (o portal renumera). CSRF uma vez.
   let reordenados = 0;
+  let tabela = atual;
+  const csrf = await m2a.getCsrf(`/processo_administrativo/${processoId}/`);
   for (let i = 0; i < desejada.length; i++) {
     const seqAlvo = i + 1;
-    const tabela = await listarItensDoProcesso(processoId);
-    // Procura o item alvo pela descrição normalizada
     const alvo = tabela.find(
       (it) =>
         norm(it.descricao) === desejada[i] ||
@@ -593,7 +592,6 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
     }
     if (alvo.sequencialAtual === seqAlvo) continue;
     const path = ALTERAR_SEQUENCIAL_ITEM(alvo.itemId);
-    const csrf = await m2a.getCsrf(`/processo_administrativo/${processoId}/`);
     const body = new URLSearchParams();
     body.set("novo_sequencial", String(seqAlvo));
     body.set("csrfmiddlewaretoken", csrf);
@@ -613,9 +611,10 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
       continue;
     }
     reordenados++;
-    await sleep(120);
+    await sleep(80);
+    tabela = await listarItensDoProcesso(processoId);
   }
-  const final = await listarItensDoProcesso(processoId);
+  const final = tabela;
   const foraDeOrdem = [];
   for (let i = 0; i < Math.min(desejada.length, final.length); i++) {
     const itemNaPosicao = final.find((it) => it.sequencialAtual === i + 1) || final[i];

@@ -100,13 +100,17 @@ export function todayISO(): string {
 }
 
 export function proximoDiaUtilISO(baseISO: string): string {
+  if (!baseISO) return baseISO;
   const [y, m, d] = baseISO.split("-").map(Number);
+  if (!y || !m || !d) return baseISO;
   const dt = new Date(Date.UTC(y, m - 1, d));
   do {
     dt.setUTCDate(dt.getUTCDate() + 1);
   } while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6);
   return dt.toISOString().slice(0, 10);
 }
+
+export const proximoDiaUtil = proximoDiaUtilISO;
 
 export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

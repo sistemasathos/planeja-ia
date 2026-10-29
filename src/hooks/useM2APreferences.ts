@@ -21,7 +21,7 @@ export function useM2APreferences(unidadeGestoraId?: string | null) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("m2a_envio_preferencias")
-        .select("*")
+        .select("unidade_gestora_id, secretaria_id, data_padrao, fiscal_id, gestor_id")
         .eq("user_id", user!.id)
         .eq("unidade_gestora_id", unidadeGestoraId!)
         .maybeSingle();

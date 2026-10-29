@@ -1,16 +1,22 @@
--- Harden RLS policies for operational tables
+-- Harden RLS policies for operational tables (idempotente — já pode existir de 20260601000200)
 DROP POLICY IF EXISTS proc_insert ON public.processos;
 DROP POLICY IF EXISTS proc_update ON public.processos;
+DROP POLICY IF EXISTS proc_insert_operational ON public.processos;
+DROP POLICY IF EXISTS proc_update_operational ON public.processos;
 CREATE POLICY proc_insert_operational ON public.processos FOR INSERT TO authenticated WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 CREATE POLICY proc_update_operational ON public.processos FOR UPDATE TO authenticated USING (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role)) WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 
 DROP POLICY IF EXISTS con_insert ON public.contratos;
 DROP POLICY IF EXISTS con_update ON public.contratos;
+DROP POLICY IF EXISTS con_insert_operational ON public.contratos;
+DROP POLICY IF EXISTS con_update_operational ON public.contratos;
 CREATE POLICY con_insert_operational ON public.contratos FOR INSERT TO authenticated WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 CREATE POLICY con_update_operational ON public.contratos FOR UPDATE TO authenticated USING (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role)) WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 
 DROP POLICY IF EXISTS ci_insert ON public.contrato_itens;
 DROP POLICY IF EXISTS ci_update ON public.contrato_itens;
+DROP POLICY IF EXISTS ci_insert_operational ON public.contrato_itens;
+DROP POLICY IF EXISTS ci_update_operational ON public.contrato_itens;
 CREATE POLICY ci_insert_operational ON public.contrato_itens FOR INSERT TO authenticated WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 CREATE POLICY ci_update_operational ON public.contrato_itens FOR UPDATE TO authenticated USING (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role)) WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 
@@ -31,6 +37,8 @@ CREATE TABLE IF NOT EXISTS public.m2a_unidades_gestoras (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.m2a_unidades_gestoras TO authenticated;
 GRANT ALL ON public.m2a_unidades_gestoras TO service_role;
 ALTER TABLE public.m2a_unidades_gestoras ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS m2a_unidades_select ON public.m2a_unidades_gestoras;
+DROP POLICY IF EXISTS m2a_unidades_modify ON public.m2a_unidades_gestoras;
 CREATE POLICY m2a_unidades_select ON public.m2a_unidades_gestoras FOR SELECT TO authenticated USING (true);
 CREATE POLICY m2a_unidades_modify ON public.m2a_unidades_gestoras FOR ALL TO authenticated
   USING (public.has_role(auth.uid(), 'admin'::public.app_role) OR public.has_role(auth.uid(), 'gestor'::public.app_role))
@@ -49,6 +57,8 @@ CREATE TABLE IF NOT EXISTS public.m2a_servidores (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.m2a_servidores TO authenticated;
 GRANT ALL ON public.m2a_servidores TO service_role;
 ALTER TABLE public.m2a_servidores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS m2a_servidores_select ON public.m2a_servidores;
+DROP POLICY IF EXISTS m2a_servidores_modify ON public.m2a_servidores;
 CREATE POLICY m2a_servidores_select ON public.m2a_servidores FOR SELECT TO authenticated USING (true);
 CREATE POLICY m2a_servidores_modify ON public.m2a_servidores FOR ALL TO authenticated
   USING (public.has_role(auth.uid(), 'admin'::public.app_role) OR public.has_role(auth.uid(), 'gestor'::public.app_role))
@@ -63,6 +73,8 @@ CREATE TABLE IF NOT EXISTS public.m2a_servidor_unidade (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.m2a_servidor_unidade TO authenticated;
 GRANT ALL ON public.m2a_servidor_unidade TO service_role;
 ALTER TABLE public.m2a_servidor_unidade ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS m2a_servidor_unidade_select ON public.m2a_servidor_unidade;
+DROP POLICY IF EXISTS m2a_servidor_unidade_modify ON public.m2a_servidor_unidade;
 CREATE POLICY m2a_servidor_unidade_select ON public.m2a_servidor_unidade FOR SELECT TO authenticated USING (true);
 CREATE POLICY m2a_servidor_unidade_modify ON public.m2a_servidor_unidade FOR ALL TO authenticated
   USING (public.has_role(auth.uid(), 'admin'::public.app_role) OR public.has_role(auth.uid(), 'gestor'::public.app_role))
@@ -113,6 +125,10 @@ CREATE TABLE IF NOT EXISTS public.fornecedores_prepostos (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fornecedores_prepostos TO authenticated;
 GRANT ALL ON public.fornecedores_prepostos TO service_role;
 ALTER TABLE public.fornecedores_prepostos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS fp_select ON public.fornecedores_prepostos;
+DROP POLICY IF EXISTS fp_insert_operational ON public.fornecedores_prepostos;
+DROP POLICY IF EXISTS fp_update_operational ON public.fornecedores_prepostos;
+DROP POLICY IF EXISTS fp_delete_manager ON public.fornecedores_prepostos;
 CREATE POLICY fp_select ON public.fornecedores_prepostos FOR SELECT TO authenticated USING (true);
 CREATE POLICY fp_insert_operational ON public.fornecedores_prepostos FOR INSERT TO authenticated
   WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
@@ -121,6 +137,7 @@ CREATE POLICY fp_update_operational ON public.fornecedores_prepostos FOR UPDATE 
   WITH CHECK (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role) OR public.has_role((select auth.uid()), 'operador'::public.app_role));
 CREATE POLICY fp_delete_manager ON public.fornecedores_prepostos FOR DELETE TO authenticated
   USING (public.has_role((select auth.uid()), 'admin'::public.app_role) OR public.has_role((select auth.uid()), 'gestor'::public.app_role));
+DROP TRIGGER IF EXISTS fornecedores_prepostos_touch ON public.fornecedores_prepostos;
 CREATE TRIGGER fornecedores_prepostos_touch BEFORE UPDATE ON public.fornecedores_prepostos FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 
 -- M2A envio preferencias (per user)
@@ -139,10 +156,15 @@ CREATE TABLE IF NOT EXISTS public.m2a_envio_preferencias (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.m2a_envio_preferencias TO authenticated;
 GRANT ALL ON public.m2a_envio_preferencias TO service_role;
 ALTER TABLE public.m2a_envio_preferencias ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS m2a_pref_select_own ON public.m2a_envio_preferencias;
+DROP POLICY IF EXISTS m2a_pref_insert_own ON public.m2a_envio_preferencias;
+DROP POLICY IF EXISTS m2a_pref_update_own ON public.m2a_envio_preferencias;
+DROP POLICY IF EXISTS m2a_pref_delete_own ON public.m2a_envio_preferencias;
 CREATE POLICY m2a_pref_select_own ON public.m2a_envio_preferencias FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
 CREATE POLICY m2a_pref_insert_own ON public.m2a_envio_preferencias FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = user_id);
 CREATE POLICY m2a_pref_update_own ON public.m2a_envio_preferencias FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
 CREATE POLICY m2a_pref_delete_own ON public.m2a_envio_preferencias FOR DELETE TO authenticated USING ((select auth.uid()) = user_id);
+DROP TRIGGER IF EXISTS m2a_envio_preferencias_touch ON public.m2a_envio_preferencias;
 CREATE TRIGGER m2a_envio_preferencias_touch BEFORE UPDATE ON public.m2a_envio_preferencias FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 
 -- Restore soft-deleted process (admin only)

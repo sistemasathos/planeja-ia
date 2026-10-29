@@ -72,7 +72,7 @@ function Page() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("fornecedores_prepostos")
-        .select("*")
+        .select("id, fornecedor_nome, fornecedor_nome_norm, fornecedor_cnpj, preposto_nome, ativo")
         .order("fornecedor_nome");
       if (error) throw error;
       return data as FornecedorRow[];

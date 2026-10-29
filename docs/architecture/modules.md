@@ -119,7 +119,7 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 
 | Arquivo | Papel |
 |---------|--------|
-| `client.ts` | SSE via proxy: `sendToM2A`, `diagnoseM2A`, `requestM2AProcessCreation`, `listenM2AProgress`, `requestNumeracaoSync`, tipos progresso |
+| `client.ts` | SSE via proxy: `sendToM2A`, `diagnoseM2A`, `listenM2AProgress`, `requestNumeracaoSync`, tipos progresso |
 | `worker.ts` | `fetchProcessoFromWorker` → POST `/processos/sync` |
 | `payload.ts` | `buildM2AContractPayload`, normalização itens |
 | `sync.ts` | Tipos payload sync processo (`M2aSyncPayload`, …) |
@@ -177,7 +177,7 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 
 **M2A cache/catálogo:** `m2a_unidades_gestoras`, `m2a_servidores`, `m2a_servidor_unidade`, `m2a_atas`, `m2a_itens`, `m2a_contratos_snapshot`, `m2a_envio_logs`, `m2a_envio_preferencias`.
 
-**RPC relevantes:** `next_contrato_number*`, `get_contract_report_data`, `get_pauta_consolidada_*`, `has_role`, `consume_trusted_device`, `restore_soft_deleted_process`, …
+**RPC relevantes:** `next_contrato_number*`, `get_contract_report_data`, `get_pauta_consolidada_*`, `get_contratos_valor_total`, `get_dashboard_contratos_por_secretaria`, `get_secretarias_cpfs`, `has_role`, `consume_trusted_device`, `restore_soft_deleted_process`, …
 
 ## `supabase/functions/`
 

@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { tryRestoreFromTrustedDevice } from "@/lib/trusted-device";
+import { redirectPathAfterLogin } from "@/lib/utils/app-path";
 
 /**
  * Layout route de rotas autenticadas.
@@ -35,9 +36,12 @@ export const Route = createFileRoute("/_authenticated")({
     }
 
     if (!session) {
+      const fromHref = redirectPathAfterLogin(location.href);
+      const dest =
+        fromHref !== "/dashboard" ? fromHref : redirectPathAfterLogin(location.pathname);
       throw redirect({
         to: "/login",
-        search: { redirect: location.href },
+        search: { redirect: dest },
       });
     }
   },

@@ -11,7 +11,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test:pauta": "npx ts-node scripts/test-pauta-export.ts"
+    "test:pauta": "npx ts-node scripts/test-pauta-export.ts",
+    "import:db": "node tools/import-database.mjs --ensure-auth-users",
+    "import:db:dry": "node tools/import-database.mjs --dry-run",
+    "import:db:groups": "node tools/import-database.mjs --groups"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -68,7 +71,6 @@
     "react-resizable-panels": "^4.6.5",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
-    "supabase": "^2.105.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.3.4",
@@ -91,6 +93,7 @@
     "globals": "^15.15.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.7.3",
+    "supabase": "^2.123.0-beta.16",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^7.3.1"

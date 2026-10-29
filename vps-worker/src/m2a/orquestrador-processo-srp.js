@@ -160,6 +160,7 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
         natureza: item.natureza,
         unidade: item.unidade,
         quantidadeGerenciadora: qtyGer,
+        knownBeforeCount: itensCriados.length,
       });
       itensCriados.push({ input: item, ...r });
     } catch (err) {
@@ -220,10 +221,12 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
     // 7a. Extrai os IDs canônicos do formulário de edição da IRP.
     let unidadeId = null;
     let orgaoId = null;
+    let htmlIntencao = null;
     try {
       const ids = await obterUnidadeOrcamentariaDaIntencao(intencao.intencaoId);
       unidadeId = ids.unidadeId;
       orgaoId = ids.orgaoId;
+      htmlIntencao = ids.html;
     } catch (err) {
       console.warn(
         `[irp] intenção ${intencao.intencaoId}: falha ao ler UO do formulário → ignorada (${err?.message ?? err}).`,
@@ -268,14 +271,11 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
       payload: { itemAtual: k + 1, totalItens: intencoes.length, sigla: rotulo },
     });
     try {
-      try {
-        await preencherDatasIntencao(
-          intencao.intencaoId,
-          payload.data_consolidacao || payload.data,
-        );
-      } catch (e) {
-        console.warn(`[irp] datas da intenção ${intencao.intencaoId}: ${e?.message ?? e}`);
-      }
+      await preencherDatasIntencao(
+        intencao.intencaoId,
+        payload.data_consolidacao || payload.data,
+        htmlIntencao,
+      );
       await disponibilizarIntencao(intencao.intencaoId);
       await manifestarInteresse(intencao.intencaoId, payload.data);
 

@@ -35,7 +35,7 @@ function Page() {
       ((
         await supabase
           .from("audit_logs")
-          .select("*")
+          .select("id, created_at, action, entity_type, request_payload")
           .order("created_at", { ascending: false })
           .limit(200)
       ).data ?? []) as unknown as AuditRow[],

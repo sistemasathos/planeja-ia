@@ -98,6 +98,8 @@ import { downloadM2ADocuments } from"@/lib/m2a";
 import { ContractReportGenerator } from"@/components/contratos/ContractReportGenerator";
 import { PautaConsolidadaExporter } from"@/components/contratos/PautaConsolidadaExporter";
 import { DocumentSelectorDialog, type DocumentTypeOption, M2A_DOC_TYPES } from "@/components/contratos/DocumentSelectorDialog";
+import { formatDateBR } from "@/lib/format-date";
+import { fetchAllPages } from "@/lib/supabase-page";
 
 export const Route = createFileRoute("/_authenticated/contratos")({
  component: Page,
@@ -113,22 +115,6 @@ const BRL = new Intl.NumberFormat("pt-BR", {
  style:"currency",
  currency:"BRL",
 });
-
-function formatDateBR(value?: string | null) {
- const raw = String(value ??"").trim();
- if (!raw) return"Sem data";
-
- const brDate = raw.match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
- if (brDate) return `${brDate[1]}/${brDate[2]}/${brDate[3]}`;
-
- const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
- if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
-
- const date = new Date(raw);
- if (Number.isNaN(date.getTime())) return raw;
-
- return date.toLocaleDateString("pt-BR");
-}
 
 const STATUS = ["ativo","encerrado","cancelado","rascunho"] as const;
 const M2A_STATUS = ["pendente","processando","sucesso","enviado","erro",
@@ -249,6 +235,7 @@ function Page() {
  queryKey: ["contratos", search, secFilter, m2aFilter, pubFilter],
  enabled: !isDetailRoute,
  queryFn: async () => {
+ const list = await fetchAllPages<any>(async (from, to) => {
  let q = supabase
  .from("contratos")
  .select("id, numero_contrato, secretaria_id, secretaria_sigla, secretaria_nome, fornecedor_nome, preposto, objeto, fiscal, data, data_texto_legado, status, status_envio_m2a, m2a_contrato_id, m2a_documentos_gerados, link_contrato, created_at, publicado, publicado_at, publicado_por, impresso_assinado",
@@ -263,35 +250,20 @@ function Page() {
  if (m2aFilter !=="__all") q = q.eq("status_envio_m2a", m2aFilter);
  if (pubFilter ==="publicado") q = q.not("publicado_at","is", null);
  else if (pubFilter ==="nao_publicado") q = q.is("publicado_at", null);
- const { data, error } = await q.limit(200);
- if (error) throw error;
- const list = data ?? [];
+ return q.range(from, to);
+ });
  const ids = list.map((c: any) => c.id);
  const totals: Record<string, number> = {};
       if (ids.length) {
-        // PostgREST limita 1000 linhas/request; contratos com muitos itens
-        // ficavam com valor R$ 0,00 na listagem. Paginar com ORDER estável
-        // (sem order, o PostgREST pode retornar ordem inconsistente entre
-        // páginas e "pular" linhas de alguns contratos).
-        const PAGE = 1000;
-        for (let from = 0; ; from += PAGE) {
-          const { data: itens, error: itErr } = await supabase
-            .from("contrato_itens")
-            .select("contrato_id, valor_total")
-            .in("contrato_id", ids)
-            .order("contrato_id", { ascending: true })
-            .order("id", { ascending: true })
-            .range(from, from + PAGE - 1);
-          if (itErr) throw itErr;
-          const rows = (itens ?? []) as any[];
-          for (const it of rows) {
-            totals[it.contrato_id] =
-              (totals[it.contrato_id] ?? 0) + Number(it.valor_total ?? 0);
-          }
-          if (rows.length < PAGE) break;
+        const { data: totais, error: totErr } = await supabase.rpc(
+          "get_contratos_valor_total",
+          { p_contrato_ids: ids },
+        );
+        if (totErr) throw totErr;
+        for (const row of totais ?? []) {
+          totals[row.contrato_id] = Number(row.valor_total ?? 0);
         }
       }
-
 
  return list.map((c: any) => ({ ...c, valor_total: totals[c.id] ?? 0 }));
  },

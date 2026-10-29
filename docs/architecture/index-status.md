@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-10-29  
+**Data:** 2026-10-29 (RPCs de lista/dashboard + `get_secretarias_cpfs` com filtro)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

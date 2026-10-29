@@ -82,6 +82,7 @@ import { extractM2AProcessoId } from"@/lib/m2a";
 import { downloadCSV } from"@/lib/export";
 import { Skeleton } from"@/components/ui/skeleton";
 import { PautaConsolidadaExporter } from"@/components/contratos/PautaConsolidadaExporter";
+import { fetchAllPages } from "@/lib/supabase-page";
 
 export const Route = createFileRoute("/_authenticated/processos")({
  component: Page,
@@ -200,9 +201,10 @@ function Page() {
  queryKey: ["processos", search, modalidadeFilter],
  enabled: !isDetailRoute,
  queryFn: async () => {
+ return fetchAllPages<any>(async (from, to) => {
  let q = supabase
  .from("processos")
- .select("*")
+ .select("id, numero_processo, ano, modalidade, objeto, status, data_abertura, observacoes, m2a_url, m2a_processo_id, created_at")
  .is("deleted_at", null)
  .order("created_at", { ascending: false });
  if (search)
@@ -210,9 +212,8 @@ function Page() {
  if (modalidadeFilter !=="__all") {
  q = q.ilike("numero_processo", `%-${modalidadeFilter}`);
  }
- const { data, error } = await q.limit(100);
- if (error) throw error;
- return data ?? [];
+ return q.range(from, to);
+ });
  },
  });
 

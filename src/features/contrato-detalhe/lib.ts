@@ -130,14 +130,7 @@ export const ITEM_WARN_KEY = "warn-edit-item";
 
 /* ----------------------------- Utilitários ----------------------------- */
 
-export function formatDateBR(value?: string | null) {
-  if (!value) return "Sem data";
-  const isoDate = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("pt-BR");
-}
+export { formatDateBR } from "@/lib/format-date";
 
 export function calcValorTotal(itens: ItemRow[]): number {
   return itens.reduce(

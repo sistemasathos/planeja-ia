@@ -148,15 +148,30 @@ Roles usadas no app: `admin`, `gestor`, `operador`, `consulta`.
 
 ### 9. Restaurar dados (opcional)
 
-**Não** versionar `database/*.json` (PII). Localmente:
+**Não** versionar `database/*.json` (PII). Import local com **service role**:
 
 ```bash
-export BACKEND_URL=https://SEU_PROJECT_REF.supabase.co
-export BACKEND_SERVICE_KEY=sua_service_role_key
-node tools/sync-database-from-backup.mjs database/database-backup.json
+export BACKEND_URL=https://bgvbfobqtqvwudxkpcuh.supabase.co
+export BACKEND_SERVICE_KEY=sua_service_role_key   # Dashboard → Settings → API
+
+# Simular (só conta linhas / ordem)
+bun run import:db:dry
+
+# Backup único (~database-backup.json)
+bun run import:db
+
+# Ou por partes (menor memória): base → processos → contratos → m2a
+bun run import:db:groups
+
+# FK / ordem: re-tentar até 3 vezes; não parar na primeira falha
+node tools/import-database.mjs --groups --passes 3 --continue-on-error
 ```
 
-Ordem de restore respeita `restore_order` no backup. Alternativa: export/import por grupos via edge `system-export` (produção → JSON → script).
+Ordem padrão (pais → filhos): `profiles` → … → `m2a_envio_preferencias` (igual `restore_order` do backup).
+
+**Auth:** `profiles.id` e `user_roles.user_id` referenciam `auth.users`. Crie usuários no Supabase Auth (mesmos e-mails) **antes** ou importe `--skip profiles,user_roles` e associe depois. Falha típica: `violates foreign key constraint` em `profiles`.
+
+Script: `tools/import-database.mjs` (substitui `sync-database-from-backup.mjs`).
 
 ### 10. Funcionalidades que dependem do banco
 

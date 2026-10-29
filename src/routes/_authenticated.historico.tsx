@@ -39,7 +39,7 @@ function Page() {
       ((
         await supabase
           .from("irp_jobs")
-          .select("*")
+          .select("id, original_filename, secretarias_com_itens, total_secretarias, total_linhas, total_valor, created_at, status")
           .order("created_at", { ascending: false })
           .limit(100)
       ).data ?? []) as unknown as JobRow[],

@@ -108,14 +108,7 @@ export function anoFromNumero(numero?: string | null): number | null {
   return y >= 2000 && y <= 2100 ? y : null;
 }
 
-export function formatDateBR(value?: string | null) {
-  if (!value) return "Sem data";
-  const isoDate = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("pt-BR");
-}
+export { formatDateBR } from "@/lib/format-date";
 
 export function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));

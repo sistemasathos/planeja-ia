@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
-import { appOriginPath } from "@/lib/utils/app-path";
+import { appOriginPath, redirectPathAfterLogin } from "@/lib/utils/app-path";
 import {
   Building2,
   Eye,
@@ -104,7 +104,7 @@ function Login() {
   useEffect(() => {
     if (!loading && user) {
       // Preserva o destino original quando o usuário chegou aqui via guard.
-      navigate({ to: redirectTo ?? "/dashboard" });
+      navigate({ to: redirectPathAfterLogin(redirectTo) });
     }
   }, [user, loading, navigate, redirectTo]);
 
@@ -149,7 +149,7 @@ function Login() {
     }
     setSubmitting(false);
     notify.success("Bem-vindo de volta");
-    navigate({ to: redirectTo ?? "/dashboard" });
+    navigate({ to: redirectPathAfterLogin(redirectTo) });
   }
 
 

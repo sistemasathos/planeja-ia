@@ -87,39 +87,6 @@ export interface M2AAutomationPayload {
   dadosM2A?: Record<string, unknown>;
 }
 
-export interface M2AProcessImportacaoPayload {
-  orgao_pk: string;
-  unidade_orcamentaria_pk: string;
-  arquivo_xlsx:
-    | string
-    | {
-        dataUrl?: string;
-        base64?: string;
-        signedUrl?: string;
-        filename?: string;
-        mimeType?: string;
-      };
-  filename?: string;
-  nome?: string;
-}
-
-export interface M2AProcessCreationPayload {
-  requestId?: string;
-  tipo?: "processo_srp";
-  objeto: string;
-  data: string;
-  data_aviso?: string;
-  ano_orcamento: string;
-  orgao_solicitante: string;
-  unidade_orcamentaria: string;
-  unidade_orcamentaria_gerenciadora?: string;
-  responsavel_dfd: string;
-  comissao_planejamento: string;
-  classificacao: string;
-  listaImportacoes: M2AProcessImportacaoPayload[];
-  m2aBaseUrl?: string;
-}
-
 export function extractM2AProcessoId(
   url: string | null | undefined,
 ): string | null {
@@ -361,61 +328,6 @@ export function diagnoseM2A(payload: M2AAutomationPayload): void {
         mensagem: err.message,
       } satisfies M2AProgressEvent);
     });
-}
-
-// ============================================================
-// Criação de processo SRP (substitui requestM2AProcessCreation)
-// ============================================================
-
-export function requestM2AProcessCreation(
-  payload: M2AProcessCreationPayload,
-): string {
-  const requestId =
-    payload.requestId ??
-    `processo_srp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const enrichedPayload = { ...payload, requestId, tipo: "processo_srp" };
-
-  emitWindow({
-    type: "M2A_PROGRESS",
-    contratoId: requestId,
-    requestId,
-    etapa: "validacao",
-    mensagem: "Conectando ao worker M2A para criar processo…",
-  } satisfies M2AProgressEvent);
-
-  void callProxySse("/processos/srp/criar", enrichedPayload, {
-    onProgress: (evt) => {
-      emitWindow({
-        type: "M2A_PROGRESS",
-        contratoId: requestId,
-        requestId,
-        ...evt,
-      });
-    },
-    onDone: (evt) => {
-      emitWindow({
-        type: "M2A_PROGRESS",
-        contratoId: requestId,
-        requestId,
-        etapa: "concluido",
-        sucesso: true,
-        mensagem: "Processo SRP criado no portal M2A.",
-        ...(evt as Record<string, unknown>),
-      });
-    },
-    onError: (err) => {
-      emitWindow({
-        type: "M2A_PROGRESS",
-        contratoId: requestId,
-        requestId,
-        etapa: "erro",
-        sucesso: false,
-        mensagem: err,
-      } satisfies M2AProgressEvent);
-    },
-  });
-
-  return requestId;
 }
 
 // ============================================================

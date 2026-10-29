@@ -1733,6 +1733,20 @@ export type Database = {
           secretaria_sigla: string
         }[]
       }
+      get_contratos_valor_total: {
+        Args: { p_contrato_ids: string[] }
+        Returns: {
+          contrato_id: string
+          valor_total: number
+        }[]
+      }
+      get_dashboard_contratos_por_secretaria: {
+        Args: never
+        Returns: {
+          secretaria_sigla: string
+          total: number
+        }[]
+      }
       get_pauta_consolidada_data: {
         Args: { p_processo_id: string }
         Returns: {
@@ -1777,7 +1791,7 @@ export type Database = {
         }[]
       }
       get_secretarias_cpfs: {
-        Args: never
+        Args: { p_secretaria_ids?: string[] }
         Returns: {
           id: string
           m2a_fiscal_cpf: string

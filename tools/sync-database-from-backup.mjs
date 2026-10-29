@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** @deprecated Use `node tools/import-database.mjs` (ordem FK, grupos, re-tentativas). */
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";

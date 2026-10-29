@@ -53,7 +53,7 @@ function Page() {
     queryFn: async () => {
       const [{ data: numData, error: numErr }, { data: secData, error: secErr }] =
         await Promise.all([
-          supabase.from("numeracao").select("*").order("secretaria_num"),
+          supabase.from("numeracao").select("secretaria_num, contador, updated_at").order("secretaria_num"),
           supabase.from("secretarias").select("numero, nome, sigla"),
         ]);
       if (numErr) throw numErr;

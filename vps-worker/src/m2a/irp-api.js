@@ -142,7 +142,7 @@ export async function obterUnidadeOrcamentariaDaIntencao(intencaoId) {
       `[irp-api] obterUnidadeOrcamentariaDaIntencao(${intencaoId}) → orgao=${orgaoId} unidade=${unidadeId}`,
     );
   }
-  return { orgaoId, unidadeId };
+  return { orgaoId, unidadeId, html: res.html };
 }
 
 // página com CSRF "global" — qualquer página interna serve
@@ -371,11 +371,15 @@ export async function incluirItemNaDFD({
   naturezaId,
   especificacao,
   quantidade,
+  knownBeforeCount,
 }) {
-  const beforeIds = await listarItensDFD(dfdId).catch((err) => {
-    console.warn(`[irp-api] não consegui listar itens da DFD antes do POST: ${err?.message ?? err}`);
-    return [];
-  });
+  const beforeLen =
+    typeof knownBeforeCount === "number"
+      ? knownBeforeCount
+      : (await listarItensDFD(dfdId).catch((err) => {
+          console.warn(`[irp-api] não consegui listar itens da DFD antes do POST: ${err?.message ?? err}`);
+          return [];
+        })).length;
   const csrf = await m2a.getCsrf(URL_SOLICITACAO_ITEM(dfdId), { force: true });
   const fd = new FormData();
   fd.append("csrfmiddlewaretoken", csrf);
@@ -416,15 +420,13 @@ export async function incluirItemNaDFD({
     throw err;
   }
   const afterIds = await listarItensDFD(dfdId);
-  const before = new Set(beforeIds.map(String));
-  const created = afterIds.filter((id) => !before.has(String(id)));
-  if (!created.length && afterIds.length <= beforeIds.length) {
+  if (afterIds.length <= beforeLen) {
     throw new Error(
       `incluirItemNaDFD (${itemPadronizadoId}): M2A aceitou o POST, mas o item não apareceu na tabela da DFD ${dfdId}.`,
     );
   }
   console.log(
-    `[irp-api] item ${itemPadronizadoId} vinculado à DFD ${dfdId}; itens antes=${beforeIds.length} depois=${afterIds.length}`,
+    `[irp-api] item ${itemPadronizadoId} vinculado à DFD ${dfdId}; itens antes=${beforeLen} depois=${afterIds.length}`,
   );
   return { ok: true };
 }
@@ -499,17 +501,21 @@ export async function listarIntencoes(dfdId) {
 // =====================================================================
 // Preenche "Data de consolidação" e "Data de notificação" na IRP antes de
 // disponibilizar (o portal recusa com "crítica(s) pendente(s)" sem elas).
-export async function preencherDatasIntencao(intencaoId, dataISO) {
+export async function preencherDatasIntencao(intencaoId, dataISO, htmlJaCarregado) {
   const iso = String(dataISO || new Date().toISOString().slice(0, 10)).slice(0, 10);
   const [y, m, d] = iso.split("-");
   const br = `${d}/${m}/${y}`;
-  const res = await m2a.get(URL_EDITAR_INTENCAO(intencaoId));
-  if (res.status >= 400) throw new Error(`preencherDatasIntencao(${intencaoId}): GET ${res.status}`);
-  const $ = loadDoc(res.html);
+  let html = htmlJaCarregado;
+  if (!html) {
+    const res = await m2a.get(URL_EDITAR_INTENCAO(intencaoId));
+    if (res.status >= 400) throw new Error(`preencherDatasIntencao(${intencaoId}): GET ${res.status}`);
+    html = res.html;
+  }
+  const $ = loadDoc(html);
   const $form = $("form").filter((_i, f) => $(f).find('[name*="data_"]').length > 0).first();
   const scope = $form.length ? $form : $.root();
   const body = new URLSearchParams();
-  const alvo = /data_?(consolidacao|notificacao)/i;
+  const alvo = /data[_-]?(consolidacao|notificacao)/i;
   const setados = [];
   scope.find("input[name], select[name], textarea[name]").each((_i, el) => {
     const $el = $(el);
@@ -526,7 +532,8 @@ export async function preencherDatasIntencao(intencaoId, dataISO) {
     } else {
       val = String($el.attr("value") ?? "");
     }
-    if (alvo.test(name)) {
+    const idAttr = String($el.attr("id") || "");
+    if (alvo.test(name) || alvo.test(idAttr)) {
       val = type === "date" || /^\d{4}-/.test(val) ? iso : br;
       setados.push(name);
     }
@@ -718,6 +725,7 @@ export async function criarItemEAdicionarNaDFD({
   natureza,
   unidade,
   quantidadeGerenciadora,
+  knownBeforeCount,
 }) {
   const { itemPadronizadoId, naturezaId } = await cadastrarItemTemporario({
     descricao,
@@ -735,6 +743,7 @@ export async function criarItemEAdicionarNaDFD({
     naturezaId,
     especificacao,
     quantidade: quantidadeGerenciadora ?? 0,
+    knownBeforeCount,
   });
   return { itemPadronizadoId, naturezaId, unidadeFornecimentoId: ufId };
 }

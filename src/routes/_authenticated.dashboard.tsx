@@ -77,10 +77,7 @@ function Dashboard() {
             .select("id", { count: "exact", head: true })
             .eq("ativa", true),
           supabase.from("irp_jobs").select("id", { count: "exact", head: true }),
-          supabase
-            .from("contratos")
-            .select("secretaria_sigla")
-            .is("deleted_at", null),
+          supabase.rpc("get_dashboard_contratos_por_secretaria"),
           supabase
             .from("contratos")
             .select("id, numero_contrato, secretaria_sigla, created_at, publicado")
@@ -94,9 +91,11 @@ function Dashboard() {
             .limit(3),
         ]);
 
+      if (contractsBySec.error) throw contractsBySec.error;
+
       const byS: Record<string, number> = {};
-      (contractsBySec.data ?? []).forEach((r: any) => {
-        byS[r.secretaria_sigla] = (byS[r.secretaria_sigla] ?? 0) + 1;
+      (contractsBySec.data ?? []).forEach((r) => {
+        byS[r.secretaria_sigla] = Number(r.total ?? 0);
       });
 
       return {

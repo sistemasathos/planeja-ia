@@ -18,6 +18,7 @@ import {
   getOrgaoMapping,
   findOrgaoByUO,
 } from "@/lib/m2a";
+import { proximoDiaUtil } from "@/features/irp/lib";
 
 type IrpJob = Database["public"]["Tables"]["irp_jobs"]["Row"];
 
@@ -54,18 +55,6 @@ const CLASSIFICACAO_OPTIONS = [
 ];
 
 const ORGAOS = listarOrgaosOrdenados();
-
-/** Soma 1 dia útil (pula sáb/dom). Aceita ISO YYYY-MM-DD; retorna ISO. */
-export function proximoDiaUtil(iso: string): string {
-  if (!iso) return iso;
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return iso;
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  do {
-    dt.setUTCDate(dt.getUTCDate() + 1);
-  } while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6);
-  return dt.toISOString().slice(0, 10);
-}
 
 export function IrpCabecalhoCard({
   jobId,

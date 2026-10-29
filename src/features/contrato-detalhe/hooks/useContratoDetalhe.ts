@@ -84,6 +84,7 @@ export function useContratoDetalhe(id: string) {
         try {
           const { data, error: cpfErr } = await supabase.rpc(
             "get_secretarias_cpfs",
+            { p_secretaria_ids: [secretariaWithCpf.id] },
           );
           if (!cpfErr && Array.isArray(data)) cpfs = data as typeof cpfs;
         } catch {
