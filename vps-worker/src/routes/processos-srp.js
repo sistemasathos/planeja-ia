@@ -21,7 +21,6 @@ export async function processosSrpRoutes(app) {
       });
     }
 
-    // Configura SSE
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
@@ -30,8 +29,12 @@ export async function processosSrpRoutes(app) {
     });
 
     const send = (event, data) => {
-      reply.raw.write(`event: ${event}\n`);
-      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      try {
+        reply.raw.write(`event: ${event}\n`);
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch {
+        // socket already closed
+      }
     };
 
     const onProgress = (evt) => {
@@ -42,6 +45,14 @@ export async function processosSrpRoutes(app) {
       }
     };
 
+    const hb = setInterval(() => {
+      try {
+        reply.raw.write(`: heartbeat ${Date.now()}\n\n`);
+      } catch {
+        clearInterval(hb);
+      }
+    }, 15000);
+
     try {
       send("start", { mensagem: "Iniciando criação do processo SRP…" });
       const result = await orquestrarCriacaoProcesso(payload, onProgress);
@@ -50,7 +61,12 @@ export async function processosSrpRoutes(app) {
       app.log.error({ err }, "Falha em orquestrarCriacaoProcesso");
       send("error", { error: String(err?.message ?? err) });
     } finally {
-      reply.raw.end();
+      clearInterval(hb);
+      try {
+        reply.raw.end();
+      } catch {
+        // already ended
+      }
     }
   });
 }

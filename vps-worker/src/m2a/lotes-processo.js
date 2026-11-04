@@ -247,12 +247,11 @@ async function listarItensSemLote(loteId) {
   );
 }
 
-async function incluirItensNoLote(loteId, itemIds) {
+async function incluirItensNoLote(loteId, itemIds, { csrfPath, csrf, referer } = {}) {
   const path = INCLUIR_ITENS(loteId);
-  const referer = `${baseUrl()}/processo_administrativo/lote/${loteId}/`;
-  const csrfPath = `/processo_administrativo/lote/${loteId}/`;
-  const { res } = await m2a.postFormRefreshingCsrf(path, {
+  const { res, csrf: csrfUsado } = await m2a.postFormRefreshingCsrf(path, {
     csrfPath,
+    csrf,
     buildBody: (token) => {
       const body = new URLSearchParams();
       body.set("csrfmiddlewaretoken", token);
@@ -269,6 +268,7 @@ async function incluirItensNoLote(loteId, itemIds) {
     const corpo = String(res.html || "").replace(/\s+/g, " ").trim().slice(0, 200);
     throw new Error(`incluirItensNoLote(${loteId}): status ${res.status} corpo="${corpo}"`);
   }
+  return csrfUsado;
 }
 
 /**
@@ -284,6 +284,9 @@ export async function vincularItensAosLotes(processoId, lotes, itens) {
     if (!porNumero.has(parsed.numero)) porNumero.set(parsed.numero, []);
     porNumero.get(parsed.numero).push(String(item.descricao || ""));
   }
+  const csrfPath = `/processo_administrativo/${processoId}/`;
+  const referer = `${baseUrl()}${csrfPath}`;
+  let csrf = await m2a.getCsrf(csrfPath, { force: true });
   let semLote = await listarItensSemLote(lotes[0].id);
   let vinculados = 0;
   let semMatch = 0;
@@ -304,7 +307,7 @@ export async function vincularItensAosLotes(processoId, lotes, itens) {
       ids.push(achado.id);
     }
     if (!ids.length) continue;
-    await incluirItensNoLote(lote.id, ids);
+    csrf = await incluirItensNoLote(lote.id, ids, { csrfPath, csrf, referer });
     semLote = semLote.filter((p) => !ids.includes(p.id));
     vinculados += ids.length;
     console.log(

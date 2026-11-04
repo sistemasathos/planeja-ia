@@ -20,6 +20,7 @@ export type M2ASrpProgressEvent =
       erros: Array<{ index: number; nome: string; erro: string }>;
       totalPlanilhas: number;
     }
+  | { type: "cancelled"; mensagem: string }
   | { type: "error"; error: string };
 
 export interface M2ASrpItemIRP {
@@ -113,7 +114,7 @@ export async function criarProcessoSrpM2A(
     });
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      onEvent({ type: "error", error: "Envio cancelado." });
+      onEvent({ type: "cancelled", mensagem: "Envio cancelado." });
       return;
     }
     throw err;
@@ -126,30 +127,43 @@ export async function criarProcessoSrpM2A(
     );
   }
 
-  await readSseStream(
-    res.body,
-    (event, raw) => {
-      const data = raw && typeof raw === "object" ? (raw as any) : {};
-      if (event === "start") onEvent({ type: "start", mensagem: data?.mensagem ?? "" });
-      else if (event === "progress")
-        onEvent({
-          type: "progress",
-          etapa: data?.etapa ?? "",
-          mensagem: data?.mensagem ?? "",
-          progresso: data?.progresso,
-          payload: data?.payload,
-        });
-      else if (event === "done")
-        onEvent({
-          type: "done",
-          processoId: String(data?.processoId ?? ""),
-          dfdId: String(data?.dfdId ?? ""),
-          erros: data?.erros ?? [],
-          totalPlanilhas: Number(data?.totalPlanilhas ?? 0),
-        });
-      else if (event === "error")
-        onEvent({ type: "error", error: String(data?.error ?? "erro desconhecido") });
-    },
-    signal,
-  );
+  try {
+    await readSseStream(
+      res.body,
+      (event, raw) => {
+        const data = raw && typeof raw === "object" ? (raw as any) : {};
+        if (event === "start") onEvent({ type: "start", mensagem: data?.mensagem ?? "" });
+        else if (event === "progress")
+          onEvent({
+            type: "progress",
+            etapa: data?.etapa ?? "",
+            mensagem: data?.mensagem ?? "",
+            progresso: data?.progresso,
+            payload: data?.payload,
+          });
+        else if (event === "cancelled")
+          onEvent({
+            type: "cancelled",
+            mensagem: String(data?.mensagem ?? "Cancelado."),
+          });
+        else if (event === "done")
+          onEvent({
+            type: "done",
+            processoId: String(data?.processoId ?? ""),
+            dfdId: String(data?.dfdId ?? ""),
+            erros: data?.erros ?? [],
+            totalPlanilhas: Number(data?.totalPlanilhas ?? 0),
+          });
+        else if (event === "error")
+          onEvent({ type: "error", error: String(data?.error ?? "erro desconhecido") });
+      },
+      signal,
+    );
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      onEvent({ type: "cancelled", mensagem: "Envio cancelado." });
+      return;
+    }
+    throw err;
+  }
 }

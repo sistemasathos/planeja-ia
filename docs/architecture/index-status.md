@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: nome do lote vem da célula; importação libera a tela antes da gravação)  
+**Data:** 2026-11-04 (IRP: SSE com heartbeat; lotes vazios após atualizar o processo)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

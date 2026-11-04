@@ -1,4 +1,4 @@
 // Carimbo de build do worker. Sirva para confirmar, em produção, QUAL versão
 // do código está rodando na VPS (o /health e o log de boot mostram isso).
 // Ao alterar comportamento relevante, incremente WORKER_BUILD.
-export const WORKER_BUILD = "2026-11-04.4-irp-soma-lotes";
+export const WORKER_BUILD = "2026-11-04.5-sse-lotes";

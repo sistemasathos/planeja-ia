@@ -253,7 +253,16 @@ export function useEnviarProcessoM2A({
           .eq("id", jobId);
       }
 
+      let terminal = false;
+
       async function handleM2AEvent(evt: any) {
+        if (
+          evt.type === "done" ||
+          evt.type === "error" ||
+          evt.type === "cancelled"
+        ) {
+          terminal = true;
+        }
         if (evt.type === "progress") {
           updateProgress(evt.progresso ?? 0, evt.mensagem, {
             etapa: evt.etapa,
@@ -400,8 +409,24 @@ export function useEnviarProcessoM2A({
 
       await runner;
 
-      // Envio concluído: libera o ref.
       m2aProcessOffRef.current = null;
+      if (!terminal) {
+        const mensagem =
+          "A conexão com o envio fechou antes do término. Confira o processo no portal M2A — o worker pode ter concluído.";
+        if (jobId) {
+          await supabase
+            .from("irp_jobs")
+            .update({
+              m2a_envio_status: "incompleto",
+              m2a_envio_mensagem: mensagem,
+              m2a_envio_completed_at: new Date().toISOString(),
+            })
+            .eq("id", jobId);
+        }
+        failTask(mensagem);
+        notify.warning("Envio sem confirmação", { description: mensagem });
+        setBusy(false);
+      }
     } catch (e: any) {
       failTask(e?.message ?? "Falha ao iniciar criacao do processo M2A.");
       notify.error("Falha ao iniciar processo M2A", {

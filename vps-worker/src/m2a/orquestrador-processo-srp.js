@@ -24,7 +24,10 @@ import {
   capturarIdsProcesso,
   atualizarProcesso,
 } from "./processo-srp.js";
-import { reordenarItensProcesso } from "./processo-comum.js";
+import {
+  listarItensDoProcesso,
+  reordenarItensProcesso,
+} from "./processo-comum.js";
 import {
   garantirLotesDoProcesso,
   vincularItensAosLotes,
@@ -170,12 +173,21 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
   const erros = [];
   let lotesCriados = [];
   if (String(payload.criterio_apuracao || "") === "2") {
+    onProgress({
+      etapa: "criar_lotes",
+      mensagem: "Criando lotes do processo…",
+      progresso: 19,
+    });
+    const itensAntesDosLotes = await listarItensDoProcesso(processoId);
+    console.log(
+      `[irp] processoId=${processoId} dfdId=${dfdId} itensAntesDosLotes=${itensAntesDosLotes.length}`,
+    );
+    if (itensAntesDosLotes.length) {
+      throw new Error(
+        `Processo ${processoId} já tem ${itensAntesDosLotes.length} item(ns) antes de criar os lotes. Processo reaproveitado; conferir objeto/data.`,
+      );
+    }
     try {
-      onProgress({
-        etapa: "criar_lotes",
-        mensagem: "Criando lotes do processo…",
-        progresso: 19,
-      });
       lotesCriados = await garantirLotesDoProcesso(processoId, itens);
       console.log(`[irp] lotes=${lotesCriados.length}`);
     } catch (err) {
