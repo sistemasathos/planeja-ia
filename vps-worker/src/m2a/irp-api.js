@@ -448,19 +448,39 @@ export async function listarItensDFD(dfdId) {
 // PASSO 3 — dispara geração das intenções para todas as participantes
 // =====================================================================
 export async function gerarIntencoes(dfdId) {
-  const csrf = await getCsrfGlobal();
+  const pagina = `/gestao_compras/formalizacao_demanda/${dfdId}/`;
+  const csrf = await m2a.getCsrf(pagina, { force: true });
   const body = new URLSearchParams();
   body.set("csrfmiddlewaretoken", csrf);
   body.set("text", "true");
   const res = await m2a.request("POST", URL_GERAR_INTENCOES(dfdId), {
     body: body.toString(),
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      Referer: refererAbsoluto(pagina),
     },
   });
   if (res.status >= 400) throw new Error(`gerarIntencoes: status ${res.status}`);
-  ensureOkJson(res, "gerarIntencoes");
+  try {
+    ensureOkJson(res, "gerarIntencoes");
+  } catch (err) {
+    const msg = String(err?.message ?? err);
+    if (/n[aã]o permitida/i.test(msg)) {
+      const existentes = await listarIntencoes(dfdId);
+      if (existentes.length) {
+        console.warn(
+          `[irp-api] gerarIntencoes(${dfdId}): ${msg} ${existentes.length} intenção(ões) já existem — seguindo sem gerar de novo.`,
+        );
+        return { ok: true, already: true, total: existentes.length };
+      }
+      throw new Error(
+        `${msg} A DFD ${dfdId} não tem intenções. O portal bloqueia a geração quando ela não é registro de preço, está sem itens, ou é uma DFD antiga reaproveitada.`,
+      );
+    }
+    throw err;
+  }
   return { ok: true };
 }
 

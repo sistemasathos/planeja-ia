@@ -68,11 +68,21 @@ export async function criarDFD(payload) {
 
   // Aguarda 3s para o portal indexar a DFD na tabela
   await sleep(3000);
-  const dfdId = String(res.finalUrl || "").match(
-    /\/gestao_compras\/formalizacao_demanda\/(\d+)\/?/,
-  )?.[1];
-  console.log(`[criarDFD] dfdIdCriado=${dfdId || "NAO_IDENTIFICADO"}`);
+  const dfdId = extrairDfdId(res.finalUrl) || extrairDfdId(res.html);
+  console.log(`[criarDFD] dfdIdCriado=${dfdId || "NAO_IDENTIFICADO"} finalUrl=${res.finalUrl || "-"}`);
   return { objetoNormalizado: objeto, dfdId };
+}
+
+function extrairDfdId(texto) {
+  const m = String(texto || "").match(
+    /\/gestao_compras\/formalizacao_demanda\/(\d+)\/?/,
+  );
+  return m?.[1] || null;
+}
+
+function idLinhaDfd($, el) {
+  const m = String($(el).attr("id") || "").match(/tr_(\d+)/);
+  return m ? m[1] : null;
 }
 
 // ---------------------------------------------------------------------
@@ -111,13 +121,27 @@ export async function capturarIdsProcesso({ objeto, dfdId: dfdIdPreferido }) {
       );
     }
   }
-  if (objetoNorm) {
-    chosen = chosen ?? linhas.find((el) => {
-      const text = $(el).text().toUpperCase();
-      return text.includes(objetoNorm.slice(0, 60));
+  if (!chosen && objetoNorm) {
+    const trecho = objetoNorm.slice(0, 60);
+    const matches = linhas.filter((el) => $(el).text().toUpperCase().includes(trecho));
+    if (!matches.length) {
+      throw new Error(
+        `Nenhuma DFD nova com o objeto informado apareceu na tabela. Abortando para não reutilizar uma DFD antiga.`,
+      );
+    }
+    chosen = matches.reduce((melhor, el) => {
+      const id = Number(idLinhaDfd($, el) || 0);
+      const idMelhor = Number(idLinhaDfd($, melhor) || 0);
+      return id > idMelhor ? el : melhor;
     });
+    const ids = matches.map((el) => idLinhaDfd($, el)).filter(Boolean);
+    console.log(
+      `[capturarIdsProcesso] sem id da criação; ${ids.length} DFD(s) com o mesmo objeto → usando a mais nova (${idLinhaDfd($, chosen)}). ids=${ids.join(",")}`,
+    );
   }
-  chosen = chosen ?? linhas[0];
+  if (!chosen) {
+    throw new Error("Não foi possível identificar a DFD recém-criada.");
+  }
 
   const trId = $(chosen).attr("id") || "";
   const matchDfd = trId.match(/tr_(\d+)/);
