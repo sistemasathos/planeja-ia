@@ -109,22 +109,23 @@ export async function gerarJustificativaM2A(
     csrf = await m2a.getCsrf("/");
   }
 
-  const body = new URLSearchParams({
-    csrfmiddlewaretoken: csrf,
-    prompt: prompt || PROMPT_PADRAO,
-  });
-
   const t0 = Date.now();
   console.log(
     `[m2a-ia] DFD ${dfdId}: chamando MIA! (síncrono, timeout=${Math.round(timeoutMs / 1000)}s)…`,
   );
-  const r = await m2a.postForm(postPath, body, {
+  const { res: r } = await m2a.postFormRefreshingCsrf(postPath, {
+    csrfPath: formPath,
+    csrf,
     timeout: timeoutMs,
+    buildBody: (token) =>
+      new URLSearchParams({
+        csrfmiddlewaretoken: token,
+        prompt: prompt || PROMPT_PADRAO,
+      }),
     headers: {
       Referer: `${config.m2a.baseUrl}${formPath}`,
       Origin: config.m2a.baseUrl,
       Accept: "*/*",
-      "X-Requested-With": "XMLHttpRequest",
     },
   });
   const dur = ((Date.now() - t0) / 1000).toFixed(1);

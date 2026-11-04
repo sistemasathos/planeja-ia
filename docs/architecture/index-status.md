@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: disponibilizar com data_aviso/data_consolidacao, fases)  
+**Data:** 2026-11-04 (IRP: CSRF após re-login; colunas de soma AE/AO/AX)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

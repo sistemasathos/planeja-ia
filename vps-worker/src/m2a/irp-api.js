@@ -523,6 +523,23 @@ function refererAbsoluto(path) {
   return `${base}${path}`;
 }
 
+function postIrpForm(path, { csrfPath, csrf, fields, refererPath }) {
+  return m2a.postFormRefreshingCsrf(path, {
+    csrfPath,
+    csrf,
+    buildBody: (token) => {
+      const body = new URLSearchParams();
+      body.set("csrfmiddlewaretoken", token);
+      for (const [key, value] of Object.entries(fields)) body.set(key, value);
+      return body;
+    },
+    headers: {
+      Accept: "*/*",
+      Referer: refererAbsoluto(refererPath),
+    },
+  });
+}
+
 function csrfDoHtml(html) {
   const token = m2a.rememberCsrf(html, "");
   return token || null;
@@ -650,18 +667,14 @@ export async function disponibilizarIntencao(
 // PASSO 5.2 — manifestar interesse
 // =====================================================================
 export async function manifestarInteresse(intencaoId, dataISO, csrf) {
-  const token = csrf || (await getCsrfGlobal());
-  const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", token);
-  body.set("text", "true");
-  body.set("data_input", String(dataISO).slice(0, 10));
-  const res = await m2a.request("POST", URL_MANIFESTAR(intencaoId), {
-    body: body.toString(),
-    headers: {
-      Accept: "*/*",
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-      Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
+  const solicitacao = URL_SOLICITACAO(intencaoId);
+  const { res } = await postIrpForm(URL_MANIFESTAR(intencaoId), {
+    csrfPath: solicitacao,
+    csrf,
+    refererPath: solicitacao,
+    fields: {
+      text: "true",
+      data_input: String(dataISO).slice(0, 10),
     },
   });
   if (res.status >= 400) throw new Error(`manifestarInteresse(${intencaoId}): status ${res.status}`);
@@ -714,20 +727,16 @@ export async function atualizarQuantidadeItem({
       `atualizarQuantidadeItem: intencaoId inválido "${intencaoId}" (esperado numérico).`,
     );
   }
-  const token = csrf || (await getCsrfGlobal());
   const qtyStr = sanitizeQuantidadeM2A(quantidade);
+  const solicitacao = URL_SOLICITACAO(intencaoId);
   // Bíblia M2A: application/x-www-form-urlencoded, sem _salvar.
-  const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", token);
-  body.set("intencao_registro_preco", String(intencaoId));
-  body.set("quantidade", qtyStr);
-  const res = await m2a.request("POST", URL_ATUALIZAR_QTD_ITEM(itemIntencaoId), {
-    body: body.toString(),
-    headers: {
-      Accept: "*/*",
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-      Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
+  const { res } = await postIrpForm(URL_ATUALIZAR_QTD_ITEM(itemIntencaoId), {
+    csrfPath: solicitacao,
+    csrf,
+    refererPath: solicitacao,
+    fields: {
+      intencao_registro_preco: String(intencaoId),
+      quantidade: qtyStr,
     },
   });
   if (res.status >= 400) {
@@ -744,24 +753,16 @@ export async function atualizarQuantidadeItem({
 // PASSO 8.1 — finalizar para consolidação
 // =====================================================================
 export async function finalizarParaConsolidacao(intencaoId, dataISO, csrf) {
-  const token = csrf || (await getCsrfGlobal());
-  const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", token);
-  body.set("text", "true");
-  body.set("data_input", String(dataISO).slice(0, 10));
-  const res = await m2a.request(
-    "POST",
-    URL_FINALIZAR_CONSOLIDACAO(intencaoId),
-    {
-      body: body.toString(),
-      headers: {
-        Accept: "*/*",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
-      },
+  const solicitacao = URL_SOLICITACAO(intencaoId);
+  const { res } = await postIrpForm(URL_FINALIZAR_CONSOLIDACAO(intencaoId), {
+    csrfPath: solicitacao,
+    csrf,
+    refererPath: solicitacao,
+    fields: {
+      text: "true",
+      data_input: String(dataISO).slice(0, 10),
     },
-  );
+  });
   if (res.status >= 400) {
     throw new Error(
       `finalizarParaConsolidacao(${intencaoId}): status ${res.status}`,
@@ -779,22 +780,19 @@ export async function consolidarIntencao(intencaoId, opts = {}) {
   const refererPath = dfdId
     ? `/gestao_compras/formalizacao_demanda/${dfdId}/`
     : URL_DFD_LIST;
-  const token =
-    (opts && typeof opts === "object" && opts.csrf) ||
-    (await m2a.getCsrf(refererPath, { force: !opts?.csrf }));
-  const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", token);
-  body.set("text", "true");
+  const csrfInicial = opts && typeof opts === "object" ? opts.csrf : null;
   // Bíblia M2A: consolidar não recebe data_input (só csrf + text=true).
-  const res = await m2a.request("POST", URL_CONSOLIDAR(intencaoId), {
-    body: body.toString(),
-    headers: {
-      Accept: "*/*",
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-      Referer: refererAbsoluto(refererPath),
-    },
+  const { res, csrf: token } = await postIrpForm(URL_CONSOLIDAR(intencaoId), {
+    csrfPath: refererPath,
+    csrf: csrfInicial,
+    refererPath,
+    fields: { text: "true" },
   });
+  if (res.status === 400) {
+    const corpo = String(res.html || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    console.warn(`[irp-api] consolidarIntencao(${intencaoId}): HTTP 400 corpo="${corpo}"`);
+    throw new Error(`consolidarIntencao(${intencaoId}): status 400 corpo="${corpo}"`);
+  }
   if (res.status >= 400) throw new Error(`consolidarIntencao(${intencaoId}): status ${res.status}`);
   ensureOkJson(res, "consolidarIntencao", intencaoId);
   return { ok: true, csrf: token };

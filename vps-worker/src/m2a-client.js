@@ -336,14 +336,17 @@ class M2aClient {
       const isPost = method.toUpperCase() === "POST";
       const sessionExpired =
         M2aClient.isLoginPage(r.html, r.finalUrl) || r.status === 401;
-      // Para POST, NÃO refazemos o request automaticamente em 403:
-      // o body já carrega um csrfmiddlewaretoken que ficaria velho após
-      // o re-login e o Django rejeitaria de novo com 403. O caller deve
-      // tratar 403 explicitamente (re-buscar CSRF e refazer o POST).
+      // POST carrega csrfmiddlewaretoken no body. Reenviar o mesmo body
+      // depois do re-login faz o Django responder 403, e os POSTs seguintes
+      // herdam o token morto. Login renova a sessão; o caller busca CSRF
+      // novo e refaz o POST (ver postFormRefreshingCsrf). GET pode repetir.
       if (sessionExpired || (!isPost && r.status === 403)) {
-        console.warn(`[m2a] sessão expirada em ${method} ${path} — re-login e retry`);
+        console.warn(
+          `[m2a] sessão expirada em ${method} ${path} — re-login${isPost ? " (POST não é reenviado)" : " e retry"}`,
+        );
         this.loggedIn = false;
         await this.login();
+        if (isPost) throw new Error("M2A_CSRF_STALE");
         r = await this._raw(method, path, opts);
         console.log(`[m2a] retry ${method} ${path} → ${r.status} (finalUrl=${r.finalUrl || "-"})`);
         if (M2aClient.isLoginPage(r.html, r.finalUrl)) {
@@ -359,6 +362,49 @@ class M2aClient {
 
   get(path, opts = {}) {
     return this.request("GET", path, opts);
+  }
+
+  /**
+   * POST application/x-www-form-urlencoded com um CSRF.
+   * Sessão expirada (M2A_CSRF_STALE) ou HTTP 403: busca o token de novo
+   * e repete o POST uma vez. HTTP 400 é rejeição do portal, não sessão.
+   * `buildBody(token)` devolve URLSearchParams ou string.
+   */
+  async postFormRefreshingCsrf(path, { csrfPath, csrf, buildBody, headers, timeout } = {}) {
+    if (!csrfPath) throw new Error(`postFormRefreshingCsrf(${path}): csrfPath obrigatório`);
+    if (typeof buildBody !== "function") {
+      throw new Error(`postFormRefreshingCsrf(${path}): buildBody obrigatório`);
+    }
+    const send = async (token) => {
+      const payload = buildBody(token);
+      const body =
+        payload instanceof URLSearchParams ? payload.toString() : String(payload ?? "");
+      return this.request("POST", path, {
+        body,
+        ...(timeout !== undefined ? { timeout } : {}),
+        headers: {
+          Accept: "*/*",
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(headers || {}),
+        },
+      });
+    };
+
+    let token = csrf || (await this.getCsrf(csrfPath, { force: true }));
+    let res = null;
+    try {
+      res = await send(token);
+    } catch (err) {
+      if (!String(err?.message || err).includes("M2A_CSRF_STALE")) throw err;
+      res = null;
+    }
+    if (!res || res.status === 403) {
+      console.warn(`[m2a] POST ${path} sem CSRF válido — token novo e uma nova tentativa`);
+      token = await this.getCsrf(csrfPath, { force: true });
+      res = await send(token);
+    }
+    return { res, csrf: token };
   }
 
   postForm(path, payload, opts = {}) {

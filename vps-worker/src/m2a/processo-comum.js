@@ -573,10 +573,13 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
     `[reordenarItensProcesso] processo ${processoId}: ${atual.length} item(ns) no portal; ${desejada.length} posição(ões) desejada(s).`,
   );
 
-  // Relê a tabela só depois de um POST (o portal renumera). CSRF uma vez.
+  // Relê a tabela só depois de um POST (o portal renumera).
+  // O CSRF é reaproveitado; se a sessão cair, o POST pede outro e tenta de novo.
   let reordenados = 0;
   let tabela = atual;
-  const csrf = await m2a.getCsrf(`/processo_administrativo/${processoId}/`);
+  const csrfPath = `/processo_administrativo/${processoId}/`;
+  let csrf = await m2a.getCsrf(csrfPath);
+  const referer = `${m2a.http.defaults.baseURL || ""}/processo_administrativo/${processoId}/`;
   for (let i = 0; i < desejada.length; i++) {
     const seqAlvo = i + 1;
     const alvo = tabela.find(
@@ -592,18 +595,21 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
     }
     if (alvo.sequencialAtual === seqAlvo) continue;
     const path = ALTERAR_SEQUENCIAL_ITEM(alvo.itemId);
-    const body = new URLSearchParams();
-    body.set("novo_sequencial", String(seqAlvo));
-    body.set("csrfmiddlewaretoken", csrf);
-    const res = await m2a.request("POST", path, {
-      body: body.toString(),
+    const { res, csrf: csrfUsado } = await m2a.postFormRefreshingCsrf(path, {
+      csrfPath,
+      csrf,
+      buildBody: (token) => {
+        const body = new URLSearchParams();
+        body.set("novo_sequencial", String(seqAlvo));
+        body.set("csrfmiddlewaretoken", token);
+        return body;
+      },
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
         Accept: "application/json, text/javascript, */*; q=0.01",
-        Referer: `${m2a.http.defaults.baseURL || ""}/processo_administrativo/${processoId}/`,
+        Referer: referer,
       },
     });
+    csrf = csrfUsado;
     if (res.status >= 400) {
       console.warn(
         `[reordenarItensProcesso] item ${alvo.itemId} → pos ${seqAlvo}: status ${res.status}`,

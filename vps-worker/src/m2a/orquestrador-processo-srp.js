@@ -392,11 +392,16 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
       progresso: 94 + (k / Math.max(finalizadas.length, 1)) * 3,
     });
     await etapaIntencao(item, "consolidar", async () => {
-      const r = await consolidarIntencao(item.intencaoId, {
-        dfdId,
-        csrf: csrfConsolidacao,
-      });
-      if (r?.csrf) csrfConsolidacao = r.csrf;
+      try {
+        const r = await consolidarIntencao(item.intencaoId, {
+          dfdId,
+          csrf: csrfConsolidacao,
+        });
+        if (r?.csrf) csrfConsolidacao = r.csrf;
+      } catch (err) {
+        csrfConsolidacao = null;
+        throw err;
+      }
     });
   }
   if (ignoradasSemMatch || ignoradasSemQuantidade) {
