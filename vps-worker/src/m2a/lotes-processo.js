@@ -40,29 +40,74 @@ function baseUrl() {
   return String(m2a.http?.defaults?.baseURL || "").replace(/\/$/, "");
 }
 
-function rotuloDoGrupo(numero, descricoes) {
-  const re =
-    /AR\s+CONDICIONADO(?:\s+TIPO\s+[A-Z0-9/]+)?\s+DE\s+[\d.]+\s+BTUS/i;
-  for (const desc of descricoes) {
-    const m = String(desc || "").match(re);
-    if (m) {
-      return `LOTE ${numero} - ${m[0].replace(/\s+/g, " ").trim().toUpperCase()}`;
-    }
+/**
+ * A célula da coluna LOTE manda no nome.
+ * "1" ou "LOTE 1" viram "LOTE 1".
+ * "LOTE 1 - ARCONDICIONADO 9.000 BUTS" é usado como está.
+ */
+export function interpretarCelulaLote(celula) {
+  const texto = String(celula ?? "").replace(/\s+/g, " ").trim();
+  if (!texto || texto === "0") return null;
+
+  const soNumero = texto.match(/^0*(\d+)$/);
+  if (soNumero) {
+    const numero = String(Number(soNumero[1]));
+    if (numero === "0") return null;
+    return { numero, nome: `LOTE ${numero}`, soNumero: true };
   }
-  return `LOTE ${numero}`;
+
+  const rotulo = texto.match(/^LOTE\s+0*(\d+)\b(.*)$/i);
+  if (rotulo) {
+    const numero = String(Number(rotulo[1]));
+    if (numero === "0") return null;
+    const resto = rotulo[2].replace(/^[\s\-–—:]+/, "").trim();
+    if (!resto) return { numero, nome: `LOTE ${numero}`, soNumero: true };
+    return { numero, nome: texto, soNumero: false };
+  }
+
+  const comNumero = texto.match(/^0*(\d+)\b(.*)$/);
+  if (comNumero) {
+    const numero = String(Number(comNumero[1]));
+    if (numero === "0") return null;
+    const resto = comNumero[2].replace(/^[\s\-–—:]+/, "").trim();
+    if (!resto) return { numero, nome: `LOTE ${numero}`, soNumero: true };
+    return { numero, nome: texto, soNumero: false };
+  }
+
+  return null;
 }
 
 function gruposPorLote(itens) {
   const grupos = new Map();
   for (const item of itens || []) {
-    const numero = String(item?.lote ?? "").trim();
-    if (!numero || numero === "0") continue;
-    if (!grupos.has(numero)) grupos.set(numero, []);
-    grupos.get(numero).push(String(item?.descricao || ""));
+    const parsed = interpretarCelulaLote(item?.lote);
+    if (!parsed) continue;
+    if (!grupos.has(parsed.numero)) {
+      grupos.set(parsed.numero, {
+        numero: parsed.numero,
+        nome: parsed.nome,
+        soNumero: parsed.soNumero,
+      });
+    }
+    const grupo = grupos.get(parsed.numero);
+    if (grupo.soNumero && !parsed.soNumero) {
+      grupo.nome = parsed.nome;
+      grupo.soNumero = false;
+    }
   }
-  return [...grupos.entries()].sort(
-    (a, b) => Number(a[0]) - Number(b[0]) || a[0].localeCompare(b[0]),
+  return [...grupos.values()].sort(
+    (a, b) => Number(a.numero) - Number(b.numero) || a.numero.localeCompare(b.numero),
   );
+}
+
+function loteCompativel(descricaoPortal, desejado) {
+  if (normDesc(descricaoPortal) === normDesc(desejado.nome)) return true;
+  if (!desejado.soNumero) return false;
+  const portal = normDesc(descricaoPortal);
+  const base = normDesc(`LOTE ${desejado.numero}`);
+  if (!portal || !base) return false;
+  if (portal === base) return true;
+  return portal.startsWith(`${base} `) || portal.startsWith(`${base}-`);
 }
 
 function htmlDaResposta(raw) {
@@ -161,28 +206,25 @@ export async function garantirLotesDoProcesso(processoId, itens) {
     console.log(`[lotes] processo ${processoId}: nenhum lote na planilha.`);
     return [];
   }
-  const desejados = grupos.map(([numero, descricoes]) => ({
-    numero,
-    descricao: rotuloDoGrupo(numero, descricoes),
-  }));
   let existentes = await listarLotes(processoId);
+  const faltantes = grupos.filter(
+    (desejado) => !existentes.some((l) => loteCompativel(l.descricao, desejado)),
+  );
+  for (const desejado of faltantes) {
+    await incluirLote(processoId, desejado.nome);
+  }
+  if (faltantes.length) existentes = await listarLotes(processoId);
+
   const criados = [];
-  for (const desejado of desejados) {
-    const ja = existentes.find((l) => casaDescricao(l.descricao, desejado.descricao));
-    if (ja) {
-      criados.push({ id: ja.id, numero: desejado.numero, descricao: desejado.descricao });
-      continue;
-    }
-    await incluirLote(processoId, desejado.descricao);
-    existentes = await listarLotes(processoId);
-    const novo = existentes.find((l) => casaDescricao(l.descricao, desejado.descricao));
-    if (!novo) {
+  for (const desejado of grupos) {
+    const achado = existentes.find((l) => loteCompativel(l.descricao, desejado));
+    if (!achado) {
       throw new Error(
-        `Lote "${desejado.descricao}" não apareceu na tabela do processo ${processoId}.`,
+        `Lote "${desejado.nome}" não apareceu na tabela do processo ${processoId}.`,
       );
     }
-    criados.push({ id: novo.id, numero: desejado.numero, descricao: desejado.descricao });
-    console.log(`[lotes] criado ${desejado.descricao} id=${novo.id}`);
+    criados.push({ id: achado.id, numero: desejado.numero, descricao: desejado.nome });
+    console.log(`[lotes] ${desejado.nome} id=${achado.id}`);
   }
   return criados;
 }
@@ -237,10 +279,10 @@ export async function vincularItensAosLotes(processoId, lotes, itens) {
   if (!lotes?.length) return { vinculados: 0, semMatch: 0 };
   const porNumero = new Map();
   for (const item of itens || []) {
-    const numero = String(item?.lote ?? "").trim();
-    if (!numero) continue;
-    if (!porNumero.has(numero)) porNumero.set(numero, []);
-    porNumero.get(numero).push(String(item.descricao || ""));
+    const parsed = interpretarCelulaLote(item?.lote);
+    if (!parsed) continue;
+    if (!porNumero.has(parsed.numero)) porNumero.set(parsed.numero, []);
+    porNumero.get(parsed.numero).push(String(item.descricao || ""));
   }
   let semLote = await listarItensSemLote(lotes[0].id);
   let vinculados = 0;

@@ -184,6 +184,7 @@ export async function uploadIrpFile({
   blob,
   fileKind,
   mimeType,
+  userId,
 }: {
   jobId: string;
   folder: "upload" | "exports" | "zip";
@@ -191,16 +192,21 @@ export async function uploadIrpFile({
   blob: Blob;
   fileKind: "irp_upload" | "irp_export" | "zip_export";
   mimeType: string;
+  userId?: string;
 }): Promise<AppFile> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) {
-    throw (
-      userError ??
-      new Error("Sessão expirada. Entre novamente para enviar arquivos.")
-    );
+  let createdBy = userId;
+  if (!createdBy) {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw (
+        userError ??
+        new Error("Sessão expirada. Entre novamente para enviar arquivos.")
+      );
+    }
+    createdBy = user.id;
   }
 
   const storagePath = `jobs/${jobId}/${folder}/${Date.now()}-${safeFileName(filename)}`;
@@ -218,7 +224,7 @@ export async function uploadIrpFile({
       mime_type: mimeType,
       size_bytes: blob.size,
       file_kind: fileKind,
-      created_by: user.id,
+      created_by: createdBy,
     })
     .select()
     .single();

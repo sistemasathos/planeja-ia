@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: dotação na tela, soma na DFD/IRP, lotes e parágrafos da MIA)  
+**Data:** 2026-11-04 (IRP: nome do lote vem da célula; importação libera a tela antes da gravação)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

@@ -169,14 +169,23 @@ export async function parseWorkbookBuffer(
     throw new Error("A planilha nao possui abas para leitura.");
   }
 
-  const colCount = worksheet.columnCount;
-  const rawMatrix: unknown[][] = [];
+  let maxRow = 0;
+  let maxCol = 0;
+  const presentes = new Map<string, unknown>();
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    maxRow = Math.max(maxRow, rowNumber);
+    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      maxCol = Math.max(maxCol, colNumber);
+      presentes.set(`${rowNumber - 1}:${colNumber - 1}`, cell.value);
+    });
+  });
 
-  for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber++) {
-    const row = worksheet.getRow(rowNumber);
-    const values: unknown[] = [];
-    for (let colNumber = 1; colNumber <= colCount; colNumber++) {
-      values.push(row.getCell(colNumber).value);
+  const rawMatrix: unknown[][] = [];
+  for (let row = 0; row < maxRow; row++) {
+    const values: unknown[] = new Array(maxCol).fill(null);
+    for (let col = 0; col < maxCol; col++) {
+      const valor = presentes.get(`${row}:${col}`);
+      if (valor !== undefined) values[col] = valor;
     }
     rawMatrix.push(values);
   }
@@ -185,7 +194,7 @@ export async function parseWorkbookBuffer(
   const matrix: unknown[][] = [];
   for (let row = 0; row < rawMatrix.length; row++) {
     const values: unknown[] = [];
-    for (let col = 0; col < colCount; col++) {
+    for (let col = 0; col < maxCol; col++) {
       values.push(resolveMatrixCell(rawMatrix, memo, row, col, new Set()));
     }
     matrix.push(values);

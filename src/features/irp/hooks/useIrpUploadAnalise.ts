@@ -42,10 +42,18 @@ export function useIrpUploadAnalise({
     setProgress(10);
     startTask("Analisando IRP", "Lendo a planilha enviada...");
     try {
+      const tLeitura = performance.now();
       const matrix = await readWorkbook(file);
+      console.info(
+        `[irp] leitura ${Math.round(performance.now() - tLeitura)}ms (${matrix.length} linhas)`,
+      );
       setProgress(40);
       updateProgress(40, "Identificando colunas e unidades...");
+      const tAnalise = performance.now();
       const a = analisar(matrix, unidades);
+      console.info(
+        `[irp] analise ${Math.round(performance.now() - tAnalise)}ms`,
+      );
       setAnalise(a);
       setProgress(70);
       updateProgress(70, "Registrando resultado da análise...");
@@ -95,23 +103,42 @@ export function useIrpUploadAnalise({
         );
       if (secretariasError) throw secretariasError;
 
-      await persistirArquivosResultado(jobRow.id, file, a);
-      setAnalise({
-        ...a,
-        resultados: a.resultados.map((r) =>
-          r.itens.length > 0 ? { ...r, status: "exportado" } : r,
-        ),
-      });
-
-      await logAudit({
-        action: "irp_analyze",
-        entityType: "irp_job",
-        entityId: jobRow.id,
-        payload: { filename: file.name, total: a.resultados.length },
-      });
       setProgress(100);
       finishTask(`Planilha analisada: ${a.resultados.length} unidade(s).`);
       notify.success(`Planilha analisada: ${a.resultados.length} unidades`);
+      setBusy(false);
+
+      const jobId = jobRow.id;
+      const arquivo = file;
+      window.setTimeout(() => {
+        const tGravacao = performance.now();
+        void persistirArquivosResultado(jobId, arquivo, a)
+          .then(async () => {
+            console.info(
+              `[irp] gravacao ${Math.round(performance.now() - tGravacao)}ms`,
+            );
+            setAnalise((atual) => {
+              if (atual !== a) return atual;
+              return {
+                ...a,
+                resultados: a.resultados.map((r) =>
+                  r.itens.length > 0 ? { ...r, status: "exportado" } : r,
+                ),
+              };
+            });
+            await logAudit({
+              action: "irp_analyze",
+              entityType: "irp_job",
+              entityId: jobId,
+              payload: { filename: arquivo.name, total: a.resultados.length },
+            });
+          })
+          .catch((erro: unknown) => {
+            const message =
+              erro instanceof Error ? erro.message : "Falha ao salvar as planilhas.";
+            notify.error("Falha ao salvar as planilhas", { description: message });
+          });
+      }, 0);
     } catch (e: any) {
       failTask(e?.message ?? "Falha na análise IRP.");
       notify.error("Falha na análise", { description: e?.message });
