@@ -464,22 +464,25 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
     );
   }
 
-  // 7.5. Reordena itens do processo conforme ordem da planilha (master list),
-  //      igual ao fluxo do processo comum. Sem isso, o portal mantém a ordem
-  //      de inclusão na DFD gerenciadora, que pode divergir da tabela original.
-  try {
-    onProgress({
-      etapa: "reordenar_itens",
-      mensagem: "Reordenando itens do processo…",
-      progresso: 97,
-    });
-    const descricoes = itens.map((i) => String(i.descricao || ""));
-    const r = await reordenarItensProcesso(processoId, descricoes);
-    console.log(`[irp] reordenados=${r.reordenados}/${descricoes.length}`);
-  } catch (err) {
-    const msg = String(err?.message ?? err);
-    console.error(`[irp] reordenar itens: ${msg}`);
-    erros.push({ etapa: "reordenar_itens", erro: msg });
+  // 7.5. Reordenar é opcional. alterar_sequencial nos itens empurra os lotes
+  //      (1–9 viram 28–36). Só roda se o envio pediu explicitamente.
+  if (payload.reordenar_itens === true) {
+    try {
+      onProgress({
+        etapa: "reordenar_itens",
+        mensagem: "Reordenando itens do processo…",
+        progresso: 97,
+      });
+      const descricoes = itens.map((i) => String(i.descricao || ""));
+      const r = await reordenarItensProcesso(processoId, descricoes);
+      console.log(`[irp] reordenados=${r.reordenados}/${descricoes.length}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[irp] reordenar itens: ${msg}`);
+      erros.push({ etapa: "reordenar_itens", erro: msg });
+    }
+  } else {
+    console.log(`[irp] reordenar itens pulado (reordenar_itens !== true).`);
   }
 
   // 8. Justificativa da Demanda — MIA! (sem Gemini). Best-effort, ao final.

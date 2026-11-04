@@ -70,6 +70,8 @@ export type ProcessoM2AForm = {
   classificacao: string;
   /** 1 = por item, 2 = por lote. */
   criterio_apuracao: "1" | "2";
+  /** Se true, o worker chama alterar_sequencial nos itens (empurra os lotes). */
+  reordenar_itens: boolean;
   e_registro_preco: boolean;
 };
 
@@ -170,6 +172,7 @@ export function buildDefaultProcessoM2AForm(): ProcessoM2AForm {
     comissao_planejamento: "3911",
     classificacao: "1",
     criterio_apuracao: "1",
+    reordenar_itens: false,
     e_registro_preco: true,
   };
 }

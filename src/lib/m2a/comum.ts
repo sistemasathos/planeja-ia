@@ -42,6 +42,8 @@ export interface M2AComumPayload {
   classificacao?: string;
   /** 1 = por item, 2 = por lote. */
   criterio_apuracao?: "1" | "2" | string;
+  /** Se true, chama alterar_sequencial nos itens (empurra os lotes). */
+  reordenar_itens?: boolean;
   numero?: string;
   gerenciadora_numero: number;
   gerenciadora_chave?: string;

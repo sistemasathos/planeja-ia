@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Send, Save, Loader2, CheckCircle2, FileText } from "lucide-react";
 import { notify } from "@/lib/notify";
 import {
@@ -35,6 +36,7 @@ export interface IrpCabecalhoForm {
   classificacao: string;
   /** 1 = por item, 2 = por lote. */
   criterio_apuracao: "1" | "2";
+  reordenar_itens: boolean;
   /** Se false, fluxo "processo comum" (sem IRP/consolidação). */
   e_registro_preco: boolean;
 }
@@ -106,6 +108,7 @@ export function IrpCabecalhoCard({
       comissao_planejamento: "3911",
       classificacao: initialJob.classificacao ?? form.classificacao,
       criterio_apuracao: form.criterio_apuracao === "2" ? "2" : "1",
+      reordenar_itens: form.reordenar_itens === true,
       e_registro_preco: form.e_registro_preco ?? true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,6 +278,25 @@ export function IrpCabecalhoCard({
           </select>
           <p className="text-[10px] text-muted-foreground">
             Por lote, a coluna LOTE da planilha define o grupo de cada item.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="irp-reordenar-itens">Reordenar itens</Label>
+          <label
+            htmlFor="irp-reordenar-itens"
+            className="flex h-10 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm"
+          >
+            <Checkbox
+              id="irp-reordenar-itens"
+              checked={form.reordenar_itens === true}
+              onCheckedChange={(checked) =>
+                update({ reordenar_itens: checked === true })
+              }
+            />
+            <span>Alterar sequencial no portal</span>
+          </label>
+          <p className="text-[10px] text-muted-foreground">
+            Desligado por padrão. Ligado, o M2A empurra os lotes para depois dos itens.
           </p>
         </div>
         <div className="flex flex-col gap-1.5">

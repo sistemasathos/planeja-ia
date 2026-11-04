@@ -414,21 +414,25 @@ export async function orquestrarCriacaoProcessoComum(
     erros.push({ etapa: "vincular_dfds", erro: msg });
   }
 
-  // 8. Reordena itens conforme ordem da planilha (master list)
+  // 8. Reordenar é opcional. alterar_sequencial nos itens empurra os lotes.
   ensureNotAborted(signal);
-  onProgress({
-    etapa: "reordenar_itens",
-    mensagem: "Reordenando itens do processo…",
-    progresso: 93,
-  });
-  try {
-    const descricoes = itens.map((i) => String(i.descricao || ""));
-    const r = await reordenarItensProcesso(processoId, descricoes);
-    console.log(`[comum] reordenados=${r.reordenados}`);
-  } catch (err) {
-    const msg = String(err?.message ?? err);
-    console.error(`[comum] reordenar itens: ${msg}`);
-    erros.push({ etapa: "reordenar_itens", erro: msg });
+  if (payload.reordenar_itens === true) {
+    onProgress({
+      etapa: "reordenar_itens",
+      mensagem: "Reordenando itens do processo…",
+      progresso: 93,
+    });
+    try {
+      const descricoes = itens.map((i) => String(i.descricao || ""));
+      const r = await reordenarItensProcesso(processoId, descricoes);
+      console.log(`[comum] reordenados=${r.reordenados}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[comum] reordenar itens: ${msg}`);
+      erros.push({ etapa: "reordenar_itens", erro: msg });
+    }
+  } else {
+    console.log(`[comum] reordenar itens pulado (reordenar_itens !== true).`);
   }
 
   // 9. Justificativa — GERA UMA ÚNICA justificativa GENÉRICA (sem citar

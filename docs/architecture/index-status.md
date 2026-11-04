@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: SSE com heartbeat; lotes vazios após atualizar o processo)  
+**Data:** 2026-11-04 (IRP: reordenar itens opcional, desligado por padrão)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

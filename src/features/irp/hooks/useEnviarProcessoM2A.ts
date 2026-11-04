@@ -228,6 +228,7 @@ export function useEnviarProcessoM2A({
         classificacao: processoM2AForm.classificacao.trim(),
         criterio_apuracao:
           processoM2AForm.criterio_apuracao === "2" ? "2" : "1",
+        reordenar_itens: processoM2AForm.reordenar_itens === true,
         gerenciadora_numero,
         gerenciadora_chave,
         itens,
