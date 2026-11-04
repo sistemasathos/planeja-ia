@@ -69,6 +69,7 @@ sequenceDiagram
 2. Job salvo em `irp_jobs` + secretarias/unidades associadas.
 3. Export por secretária (`gerarPlanilhaSecretaria`).
 4. Envio ao M2A: `criarProcessoSrpM2A` ou fluxo comum conforme tipo; progresso via listeners em `client.ts`.
+5. IRP no portal, em fases (`orquestrador-processo-srp.js`): lista intenções, lê órgão+UO em `atualizar/{id}/?detail=true`, disponibiliza com `data_aviso` (1 dia útil após a DFD) e `data_consolidacao` (8 dias úteis depois), manifesta todas, preenche quantidades item a item, finaliza e consolida.
 
 ## 8. Numeração de contratos
 

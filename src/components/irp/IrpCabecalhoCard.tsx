@@ -18,7 +18,7 @@ import {
   getOrgaoMapping,
   findOrgaoByUO,
 } from "@/lib/m2a";
-import { proximoDiaUtil } from "@/features/irp/lib";
+import { datasManifestacaoIrp, proximoDiaUtil } from "@/features/irp/lib";
 
 type IrpJob = Database["public"]["Tables"]["irp_jobs"]["Row"];
 
@@ -90,7 +90,7 @@ export function IrpCabecalhoCard({
       data_consolidacao:
         (initialJob as any).data_consolidacao ??
         form.data_consolidacao ??
-        proximoDiaUtil(dataDfd),
+        datasManifestacaoIrp(dataDfd).dataConsolidacao,
       ano_orcamento:
         initialJob.ano_orcamento != null
           ? String(initialJob.ano_orcamento)
@@ -215,17 +215,22 @@ export function IrpCabecalhoCard({
               const novaData = e.target.value;
               // se a consolidação ainda era o "próximo dia útil" da data anterior,
               // recalcula automaticamente. Caso contrário, mantém o valor manual.
-              const auto = proximoDiaUtil(form.data);
+              const auto = datasManifestacaoIrp(form.data).dataConsolidacao;
+              const autoAntigo = proximoDiaUtil(form.data);
               const next: Partial<IrpCabecalhoForm> = { data: novaData };
-              if (!form.data_consolidacao || form.data_consolidacao === auto) {
-                next.data_consolidacao = proximoDiaUtil(novaData);
+              if (
+                !form.data_consolidacao ||
+                form.data_consolidacao === auto ||
+                form.data_consolidacao === autoAntigo
+              ) {
+                next.data_consolidacao = datasManifestacaoIrp(novaData).dataConsolidacao;
               }
               onChange({ ...form, ...next });
             }}
             onBlur={persist}
           />
           <p className="text-[10px] text-muted-foreground">
-            usada como data do processo, manifestação e finalização da IRP.
+            cadastro da DFD. A manifestação começa no dia útil seguinte.
           </p>
         </div>
         {eSRP && (
@@ -238,7 +243,7 @@ export function IrpCabecalhoCard({
               onBlur={persist}
             />
             <p className="text-[10px] text-muted-foreground">
-              geralmente 1 dia útil após a data da DFD.
+              8 dias úteis após o início da manifestação. O envio recalcula a partir da data da DFD.
             </p>
           </div>
         )}

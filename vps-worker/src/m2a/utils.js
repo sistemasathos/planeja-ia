@@ -52,6 +52,17 @@ export function adicionarDiaUtil(dataISO) {
   return formatIsoDateUTC(date);
 }
 
+/** Soma N dias úteis (sábado/domingo não contam). Feriados ficam a cargo do portal. */
+export function adicionarDiasUteis(dataISO, dias) {
+  const n = Number(dias);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`adicionarDiasUteis: dias inválido "${dias}"`);
+  }
+  let cursor = String(dataISO);
+  for (let i = 0; i < n; i++) cursor = adicionarDiaUtil(cursor);
+  return cursor;
+}
+
 // Normaliza descrição para CAIXA ALTA, parágrafo único.
 export function normalizeObjetoCaixaAlta(value) {
   return String(value ?? "")

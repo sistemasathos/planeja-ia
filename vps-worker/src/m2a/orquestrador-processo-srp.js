@@ -11,11 +11,12 @@
 //        c. Inclui item na DFD gerenciadora c/ qty da gerenciadora (PASSO 2)
 //   5. Dispara geração das intenções               (PASSO 3)
 //   6. Lista intenções                              (PASSO 4)
-//   7. Para cada intenção (= 1 secretaria participante):
-//        7a. disponibilizar + manifestar           (PASSOS 5.1/5.2)
-//        7b. lista itens da intenção                (PASSO 6)
-//        7c. para cada item: atualizar quantidade   (PASSO 7)
-//        7d. finalizar + consolidar                 (PASSOS 8.1/8.2)
+//   7. Pareia intenções por órgão + unidade orçamentária.
+//      Depois, em fases (não uma IRP inteira de cada vez):
+//        7a. abre e disponibiliza todas
+//        7b. manifesta interesse de todas
+//        7c. preenche quantidade item a item
+//        7d. finaliza todas e consolida todas
 // =====================================================================
 
 import {
@@ -29,6 +30,7 @@ import {
   gerarIntencoes,
   listarIntencoes,
   listarItensDFD,
+  abrirSolicitacaoIntencao,
   disponibilizarIntencao,
   manifestarInteresse,
   listarItensIntencao,
@@ -36,7 +38,7 @@ import {
   finalizarParaConsolidacao,
   consolidarIntencao,
   obterUnidadeOrcamentariaDaIntencao,
-  preencherDatasIntencao,
+  calcularDatasManifestacaoIrp,
 } from "./irp-api.js";
 import {
   gerarJustificativaM2A,
@@ -215,18 +217,17 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
   let ignoradasSemMatch = 0;
   let ignoradasSemQuantidade = 0;
   const orfas = [];
+  const fila = [];
   for (let k = 0; k < intencoes.length; k++) {
     const intencao = intencoes[k];
 
     // 7a. Extrai os IDs canônicos do formulário de edição da IRP.
     let unidadeId = null;
     let orgaoId = null;
-    let htmlIntencao = null;
     try {
       const ids = await obterUnidadeOrcamentariaDaIntencao(intencao.intencaoId);
       unidadeId = ids.unidadeId;
       orgaoId = ids.orgaoId;
-      htmlIntencao = ids.html;
     } catch (err) {
       console.warn(
         `[irp] intenção ${intencao.intencaoId}: falha ao ler UO do formulário → ignorada (${err?.message ?? err}).`,
@@ -262,58 +263,141 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
       continue;
     }
 
-    const rotulo = secretaria.sigla || secretaria.nome;
-    const baseProg = 55 + (k / Math.max(intencoes.length, 1)) * 42;
-    onProgress({
-      etapa: "intencoes",
-      mensagem: `Processando ${rotulo} (${k + 1}/${intencoes.length})…`,
-      progresso: baseProg,
-      payload: { itemAtual: k + 1, totalItens: intencoes.length, sigla: rotulo },
+    fila.push({
+      intencaoId: intencao.intencaoId,
+      secretaria,
+      unidadeId,
+      rotulo: secretaria.sigla || secretaria.nome,
     });
-    try {
-      await preencherDatasIntencao(
-        intencao.intencaoId,
-        payload.data_consolidacao || payload.data,
-        htmlIntencao,
-      );
-      await disponibilizarIntencao(intencao.intencaoId);
-      await manifestarInteresse(intencao.intencaoId, payload.data);
+  }
 
-      const itensIntencao = await listarItensIntencao(intencao.intencaoId);
+  const { dataAviso, dataConsolidacao } = await calcularDatasManifestacaoIrp(payload.data);
+  const refererDfd = `${String(process.env.M2A_BASE_URL || "").replace(/\/$/, "")}/gestao_compras/formalizacao_demanda/${dfdId}/`;
+
+  async function etapaIntencao(item, etapa, fn) {
+    try {
+      await fn();
+      return true;
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[irp] falha na intenção ${item.intencaoId} (${item.rotulo}) [${etapa}]: ${msg}`);
+      erros.push({
+        etapa,
+        intencaoId: item.intencaoId,
+        secretaria: item.rotulo,
+        erro: msg,
+      });
+      return false;
+    }
+  }
+
+  const disponibilizadas = [];
+  for (let k = 0; k < fila.length; k++) {
+    const item = fila[k];
+    onProgress({
+      etapa: "disponibilizar",
+      mensagem: `Disponibilizando ${item.rotulo} (${k + 1}/${fila.length})…`,
+      progresso: 55 + (k / Math.max(fila.length, 1)) * 8,
+      payload: { itemAtual: k + 1, totalItens: fila.length, sigla: item.rotulo },
+    });
+    const ok = await etapaIntencao(item, "disponibilizar", async () => {
+      const aberta = await abrirSolicitacaoIntencao(item.intencaoId, refererDfd);
+      item.csrf = aberta.csrf;
+      await disponibilizarIntencao(item.intencaoId, {
+        dataAviso,
+        dataConsolidacao,
+        csrf: item.csrf,
+      });
+    });
+    if (ok) disponibilizadas.push(item);
+  }
+
+  const manifestadas = [];
+  for (let k = 0; k < disponibilizadas.length; k++) {
+    const item = disponibilizadas[k];
+    onProgress({
+      etapa: "manifestar",
+      mensagem: `Manifestando interesse ${item.rotulo} (${k + 1}/${disponibilizadas.length})…`,
+      progresso: 64 + (k / Math.max(disponibilizadas.length, 1)) * 6,
+    });
+    const ok = await etapaIntencao(item, "manifestar", () =>
+      manifestarInteresse(item.intencaoId, dataAviso, item.csrf),
+    );
+    if (ok) manifestadas.push(item);
+  }
+
+  const quantificadas = [];
+  for (let k = 0; k < manifestadas.length; k++) {
+    const item = manifestadas[k];
+    onProgress({
+      etapa: "quantidades",
+      mensagem: `Preenchendo quantidades ${item.rotulo} (${k + 1}/${manifestadas.length})…`,
+      progresso: 72 + (k / Math.max(manifestadas.length, 1)) * 16,
+      payload: { itemAtual: k + 1, totalItens: manifestadas.length, sigla: item.rotulo },
+    });
+    const ok = await etapaIntencao(item, "quantidades", async () => {
+      const aberta = await abrirSolicitacaoIntencao(item.intencaoId, refererDfd);
+      item.csrf = aberta.csrf;
+      const itensIntencao = await listarItensIntencao(item.intencaoId);
       if (!itensIntencao.length) {
         throw new Error(
-          `intenção ${intencao.intencaoId} não recebeu itens da DFD ${dfdId}; não vou finalizar uma IRP vazia.`,
+          `intenção ${item.intencaoId} não recebeu itens da DFD ${dfdId}; não vou finalizar uma IRP vazia.`,
         );
       }
       if (itensIntencao.length !== itensCriados.length) {
         console.warn(
-          `[irp] intencao ${intencao.intencaoId}: ${itensIntencao.length} itens; esperado ${itensCriados.length} (vou alinhar por ordem)`,
+          `[irp] intencao ${item.intencaoId}: ${itensIntencao.length} itens; esperado ${itensCriados.length} (vou alinhar por ordem)`,
         );
       }
       const N = Math.min(itensIntencao.length, itensCriados.length);
       for (let j = 0; j < N; j++) {
-        const itemIntencao = itensIntencao[j];
         const original = itensCriados[j].input;
-        const qty = quantidadeDoItem(original, secretaria, unidadeId ? [`uo:${unidadeId}`] : []);
+        const qty = quantidadeDoItem(
+          original,
+          item.secretaria,
+          item.unidadeId ? [`uo:${item.unidadeId}`] : [],
+        );
         if (!Number.isFinite(qty) || qty <= 0) continue;
         await atualizarQuantidadeItem({
-          itemIntencaoId: itemIntencao.itemIntencaoId,
-          intencaoId: intencao.intencaoId,
+          itemIntencaoId: itensIntencao[j].itemIntencaoId,
+          intencaoId: item.intencaoId,
           quantidade: qty,
+          csrf: item.csrf,
         });
       }
-      await finalizarParaConsolidacao(intencao.intencaoId, payload.data);
-      await consolidarIntencao(intencao.intencaoId, payload.data_consolidacao || payload.data);
-    } catch (err) {
-      const msg = String(err?.message ?? err);
-      console.error(`[irp] falha na intenção ${intencao.intencaoId} (${rotulo}): ${msg}`);
-      erros.push({
-        etapa: "intencao",
-        intencaoId: intencao.intencaoId,
-        secretaria: rotulo,
-        erro: msg,
+    });
+    if (ok) quantificadas.push(item);
+  }
+
+  const finalizadas = [];
+  for (let k = 0; k < quantificadas.length; k++) {
+    const item = quantificadas[k];
+    onProgress({
+      etapa: "finalizar",
+      mensagem: `Finalizando ${item.rotulo} (${k + 1}/${quantificadas.length})…`,
+      progresso: 90 + (k / Math.max(quantificadas.length, 1)) * 3,
+    });
+    const ok = await etapaIntencao(item, "finalizar", () =>
+      finalizarParaConsolidacao(item.intencaoId, dataAviso, item.csrf),
+    );
+    if (ok) finalizadas.push(item);
+  }
+
+  let csrfConsolidacao = null;
+  for (let k = 0; k < finalizadas.length; k++) {
+    const item = finalizadas[k];
+    onProgress({
+      etapa: "consolidar",
+      mensagem: `Consolidando ${item.rotulo} (${k + 1}/${finalizadas.length})…`,
+      progresso: 94 + (k / Math.max(finalizadas.length, 1)) * 3,
+    });
+    await etapaIntencao(item, "consolidar", async () => {
+      const r = await consolidarIntencao(item.intencaoId, {
+        dfdId,
+        csrf: csrfConsolidacao,
       });
-    }
+      if (r?.csrf) csrfConsolidacao = r.csrf;
+    });
   }
   if (ignoradasSemMatch || ignoradasSemQuantidade) {
     console.log(

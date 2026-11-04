@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-10-29 (SSE compartilhado, sync M2A unificado, Excel lazy/worker, Start removido)  
+**Data:** 2026-11-04 (IRP: disponibilizar com data_aviso/data_consolidacao, fases)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

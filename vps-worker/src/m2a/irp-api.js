@@ -5,7 +5,7 @@
 
 import FormData from "form-data";
 import { m2a } from "../m2a-client.js";
-import { loadDoc, sleep, formatQuantidadeM2A } from "./utils.js";
+import { loadDoc, sleep, formatQuantidadeM2A, adicionarDiasUteis } from "./utils.js";
 
 // Sanitiza quantidade para o Django M2A.
 // Regras:
@@ -49,6 +49,8 @@ const URL_GERAR_INTENCOES = (dfdId) =>
   `/gestao_compras/formalizacao_demanda/gerar_intencoes/${dfdId}/`;
 const URL_TABELA_INTENCOES = (dfdId) =>
   `/gestao_compras/intencao_registro_preco/tabela_solicitacao/${dfdId}?page_size=1000`;
+const URL_SOLICITACAO = (id) =>
+  `/gestao_compras/intencao_registro_preco/solicitacao/${id}/`;
 const URL_DISPONIBILIZAR = (id) =>
   `/gestao_compras/intencao_registro_preco/disponibilizar/${id}/?detail_solicitacao=true`;
 const URL_MANIFESTAR = (id) =>
@@ -496,78 +498,129 @@ export async function listarIntencoes(dfdId) {
 }
 
 
-// =====================================================================
-// PASSO 5.1 — disponibilizar
-// =====================================================================
-// Preenche "Data de consolidação" e "Data de notificação" na IRP antes de
-// disponibilizar (o portal recusa com "crítica(s) pendente(s)" sem elas).
-export async function preencherDatasIntencao(intencaoId, dataISO, htmlJaCarregado) {
-  const iso = String(dataISO || new Date().toISOString().slice(0, 10)).slice(0, 10);
-  const [y, m, d] = iso.split("-");
-  const br = `${d}/${m}/${y}`;
-  let html = htmlJaCarregado;
-  if (!html) {
-    const res = await m2a.get(URL_EDITAR_INTENCAO(intencaoId));
-    if (res.status >= 400) throw new Error(`preencherDatasIntencao(${intencaoId}): GET ${res.status}`);
-    html = res.html;
-  }
-  const $ = loadDoc(html);
-  const $form = $("form").filter((_i, f) => $(f).find('[name*="data_"]').length > 0).first();
-  const scope = $form.length ? $form : $.root();
-  const body = new URLSearchParams();
-  const alvo = /data[_-]?(consolidacao|notificacao)/i;
-  const setados = [];
-  scope.find("input[name], select[name], textarea[name]").each((_i, el) => {
-    const $el = $(el);
-    const name = $el.attr("name");
-    const type = String($el.attr("type") || "").toLowerCase();
-    if (!name || type === "submit" || type === "button" || type === "file") return;
-    if ((type === "checkbox" || type === "radio") && $el.attr("checked") === undefined) return;
-    let val;
-    if (el.tagName === "select") {
-      const opt = $el.find("option[selected]").first();
-      val = opt.length ? String(opt.attr("value") ?? "") : "";
-    } else if (el.tagName === "textarea") {
-      val = $el.text();
-    } else {
-      val = String($el.attr("value") ?? "");
-    }
-    const idAttr = String($el.attr("id") || "");
-    if (alvo.test(name) || alvo.test(idAttr)) {
-      val = type === "date" || /^\d{4}-/.test(val) ? iso : br;
-      setados.push(name);
-    }
-    body.append(name, val);
-  });
-  for (const n of ["data_consolidacao", "data_notificacao"]) {
-    if (!setados.includes(n)) { body.set(n, br); setados.push(n); }
-  }
-  if (!body.get("csrfmiddlewaretoken")) body.set("csrfmiddlewaretoken", await getCsrfGlobal());
-  body.set("_salvar", "true");
-  const post = await m2a.request("POST", URL_EDITAR_INTENCAO(intencaoId).replace("?detail=true", ""), {
-    body: body.toString(),
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "X-Requested-With": "XMLHttpRequest",
-    },
-  });
-  console.log(`[irp-api] preencherDatasIntencao(${intencaoId}) campos=${setados.join(",")} data=${br} → ${post.status}`);
-  return { ok: post.status < 400 };
+function refererAbsoluto(path) {
+  const base = String(m2a.http?.defaults?.baseURL || "").replace(/\/$/, "");
+  return `${base}${path}`;
 }
 
-export async function disponibilizarIntencao(intencaoId) {
-  const csrf = await getCsrfGlobal();
+function csrfDoHtml(html) {
+  const token = m2a.rememberCsrf(html, "");
+  return token || null;
+}
+
+/**
+ * data_aviso = 1 dia útil após o cadastro da DFD.
+ * data_consolidacao = 8 dias úteis após o aviso.
+ * O portal (`/core/proximo_dia_util`) entra só quando devolve uma data
+ * igual ou posterior ao cálculo local — assim um feriado empurra a data
+ * e uma resposta curta demais não substitui os 8 dias úteis.
+ */
+export async function calcularDatasManifestacaoIrp(dataCadastroISO) {
+  const base = String(dataCadastroISO || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+    throw new Error(`data da DFD inválida para IRP: "${dataCadastroISO}"`);
+  }
+  const dataAviso = await proximoDiaUtilPortal(base, 1);
+  const dataConsolidacao = await proximoDiaUtilPortal(dataAviso, 8);
+  console.log(
+    `[irp-api] datas IRP cadastro=${base} aviso=${dataAviso} consolidacao=${dataConsolidacao}`,
+  );
+  return { dataAviso, dataConsolidacao };
+}
+
+async function proximoDiaUtilPortal(dataISO, quantidadeDias) {
+  const local = adicionarDiasUteis(dataISO, quantidadeDias);
+  try {
+    const res = await m2a.get(
+      `/core/proximo_dia_util?data_atual=${encodeURIComponent(dataISO)}&quantidade_dias=${quantidadeDias}`,
+      {
+        headers: {
+          Accept: "application/json, text/javascript, */*; q=0.01",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      },
+    );
+    let portal = "";
+    try {
+      portal = String(JSON.parse(res.html).data_proximo_dia_util || "").slice(0, 10);
+    } catch {
+      portal = "";
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(portal)) {
+      console.warn(
+        `[irp-api] proximo_dia_util(${dataISO}, ${quantidadeDias}) sem data; local=${local}`,
+      );
+      return local;
+    }
+    if (portal < local) {
+      console.warn(
+        `[irp-api] proximo_dia_util(${dataISO}, ${quantidadeDias}) portal=${portal} anterior a ${quantidadeDias} dia(s) útil(eis) (${local}); usando local`,
+      );
+      return local;
+    }
+    if (portal !== local) {
+      console.log(
+        `[irp-api] proximo_dia_util(${dataISO}, ${quantidadeDias}) portal=${portal} local=${local} → portal`,
+      );
+    }
+    return portal;
+  } catch (err) {
+    console.warn(
+      `[irp-api] proximo_dia_util falhou (${err?.message || err}); local=${local}`,
+    );
+    return local;
+  }
+}
+
+export async function abrirSolicitacaoIntencao(intencaoId, referer) {
+  const path = URL_SOLICITACAO(intencaoId);
+  const res = await m2a.get(path, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      ...(referer ? { Referer: referer } : {}),
+    },
+  });
+  if (res.status >= 400) {
+    throw new Error(`abrirSolicitacaoIntencao(${intencaoId}): GET ${res.status}`);
+  }
+  const csrf = csrfDoHtml(res.html) || (await getCsrfGlobal());
+  return { csrf, html: res.html };
+}
+
+// =====================================================================
+// PASSO 5.1 — disponibilizar
+// O portal exige data_aviso e data_consolidacao NESTE post.
+// Gravar o formulário de edição (data_notificacao) não preenche essas críticas.
+// =====================================================================
+export async function disponibilizarIntencao(
+  intencaoId,
+  { dataAviso, dataConsolidacao, csrf } = {},
+) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dataAviso || ""))) {
+    throw new Error(`disponibilizarIntencao(${intencaoId}): data_aviso inválida "${dataAviso}"`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dataConsolidacao || ""))) {
+    throw new Error(
+      `disponibilizarIntencao(${intencaoId}): data_consolidacao inválida "${dataConsolidacao}"`,
+    );
+  }
+  const token = csrf || (await getCsrfGlobal());
   const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", csrf);
-  body.set("text", "true");
-  body.set("detail_solicitacao", "true");
+  body.set("csrfmiddlewaretoken", token);
+  body.set("data_aviso", dataAviso);
+  body.set("data_consolidacao", dataConsolidacao);
   const res = await m2a.request("POST", URL_DISPONIBILIZAR(intencaoId), {
     body: body.toString(),
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
     },
   });
+  console.log(
+    `[irp-api] disponibilizarIntencao(${intencaoId}) aviso=${dataAviso} consolidacao=${dataConsolidacao} → ${res.status}`,
+  );
   if (res.status >= 400) throw new Error(`disponibilizarIntencao(${intencaoId}): status ${res.status}`);
   ensureOkJson(res, "disponibilizarIntencao", intencaoId);
   return { ok: true };
@@ -576,18 +629,19 @@ export async function disponibilizarIntencao(intencaoId) {
 // =====================================================================
 // PASSO 5.2 — manifestar interesse
 // =====================================================================
-export async function manifestarInteresse(intencaoId, dataISO) {
-  const csrf = await getCsrfGlobal();
+export async function manifestarInteresse(intencaoId, dataISO, csrf) {
+  const token = csrf || (await getCsrfGlobal());
   const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", csrf);
+  body.set("csrfmiddlewaretoken", token);
   body.set("text", "true");
-  body.set("detail_solicitacao", "true");
-  body.set("data_input", String(dataISO));
+  body.set("data_input", String(dataISO).slice(0, 10));
   const res = await m2a.request("POST", URL_MANIFESTAR(intencaoId), {
     body: body.toString(),
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
     },
   });
   if (res.status >= 400) throw new Error(`manifestarInteresse(${intencaoId}): status ${res.status}`);
@@ -627,6 +681,7 @@ export async function atualizarQuantidadeItem({
   itemIntencaoId,
   intencaoId,
   quantidade,
+  csrf,
 }) {
   // Trava extra contra IDs contaminados ("on") chegando aqui.
   if (!isValidNumericId(String(itemIntencaoId))) {
@@ -639,19 +694,20 @@ export async function atualizarQuantidadeItem({
       `atualizarQuantidadeItem: intencaoId inválido "${intencaoId}" (esperado numérico).`,
     );
   }
-  const csrf = await getCsrfGlobal();
+  const token = csrf || (await getCsrfGlobal());
   const qtyStr = sanitizeQuantidadeM2A(quantidade);
   // Bíblia M2A: application/x-www-form-urlencoded, sem _salvar.
   const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", csrf);
+  body.set("csrfmiddlewaretoken", token);
   body.set("intencao_registro_preco", String(intencaoId));
   body.set("quantidade", qtyStr);
   const res = await m2a.request("POST", URL_ATUALIZAR_QTD_ITEM(itemIntencaoId), {
     body: body.toString(),
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
-      Referer: `${m2a.http.defaults.baseURL || ""}/gestao_compras/intencao_registro_preco/${intencaoId}/`,
+      Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
     },
   });
   if (res.status >= 400) {
@@ -667,21 +723,22 @@ export async function atualizarQuantidadeItem({
 // =====================================================================
 // PASSO 8.1 — finalizar para consolidação
 // =====================================================================
-export async function finalizarParaConsolidacao(intencaoId, dataISO) {
-  const csrf = await getCsrfGlobal();
+export async function finalizarParaConsolidacao(intencaoId, dataISO, csrf) {
+  const token = csrf || (await getCsrfGlobal());
   const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", csrf);
+  body.set("csrfmiddlewaretoken", token);
   body.set("text", "true");
-  body.set("detail_solicitacao", "true");
-  body.set("data_input", String(dataISO));
+  body.set("data_input", String(dataISO).slice(0, 10));
   const res = await m2a.request(
     "POST",
     URL_FINALIZAR_CONSOLIDACAO(intencaoId),
     {
       body: body.toString(),
       headers: {
+        Accept: "*/*",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
+        Referer: refererAbsoluto(URL_SOLICITACAO(intencaoId)),
       },
     },
   );
@@ -697,22 +754,30 @@ export async function finalizarParaConsolidacao(intencaoId, dataISO) {
 // =====================================================================
 // PASSO 8.2 — consolidar oficialmente
 // =====================================================================
-export async function consolidarIntencao(intencaoId, dataISO) {
-  const csrf = await getCsrfGlobal();
+export async function consolidarIntencao(intencaoId, opts = {}) {
+  const dfdId = opts && typeof opts === "object" ? opts.dfdId : null;
+  const refererPath = dfdId
+    ? `/gestao_compras/formalizacao_demanda/${dfdId}/`
+    : URL_DFD_LIST;
+  const token =
+    (opts && typeof opts === "object" && opts.csrf) ||
+    (await m2a.getCsrf(refererPath, { force: !opts?.csrf }));
   const body = new URLSearchParams();
-  body.set("csrfmiddlewaretoken", csrf);
+  body.set("csrfmiddlewaretoken", token);
   body.set("text", "true");
   // Bíblia M2A: consolidar não recebe data_input (só csrf + text=true).
   const res = await m2a.request("POST", URL_CONSOLIDAR(intencaoId), {
     body: body.toString(),
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       "X-Requested-With": "XMLHttpRequest",
+      Referer: refererAbsoluto(refererPath),
     },
   });
   if (res.status >= 400) throw new Error(`consolidarIntencao(${intencaoId}): status ${res.status}`);
   ensureOkJson(res, "consolidarIntencao", intencaoId);
-  return { ok: true };
+  return { ok: true, csrf: token };
 }
 
 // =====================================================================

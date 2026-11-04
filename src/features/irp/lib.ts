@@ -110,6 +110,24 @@ export function proximoDiaUtilISO(baseISO: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+export function adicionarDiasUteisISO(baseISO: string, dias: number): string {
+  let cursor = baseISO;
+  for (let i = 0; i < dias; i++) cursor = proximoDiaUtilISO(cursor);
+  return cursor;
+}
+
+/** Aviso = 1 dia útil após a DFD. Consolidação = 8 dias úteis após o aviso. */
+export function datasManifestacaoIrp(dataDfd: string): {
+  dataAviso: string;
+  dataConsolidacao: string;
+} {
+  const dataAviso = proximoDiaUtilISO(dataDfd);
+  return {
+    dataAviso,
+    dataConsolidacao: adicionarDiasUteisISO(dataAviso, 8),
+  };
+}
+
 export const proximoDiaUtil = proximoDiaUtilISO;
 
 export function blobToDataUrl(blob: Blob): Promise<string> {
@@ -141,7 +159,7 @@ export function buildDefaultProcessoM2AForm(): ProcessoM2AForm {
   return {
     objeto: "",
     data: hoje,
-    data_consolidacao: proximoDiaUtilISO(hoje),
+    data_consolidacao: datasManifestacaoIrp(hoje).dataConsolidacao,
     ano_orcamento: String(new Date().getFullYear()),
     orgao_solicitante: "",
     unidade_orcamentaria: "",
