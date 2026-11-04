@@ -18,7 +18,21 @@ export interface ItemValido {
   quantidade: number;
   valorReferencia: number;
   sourceRow: number;
+  /** Número da coluna LOTE da pauta, quando existir. */
+  lote?: string;
+  /**
+   * Quantidade da coluna de soma da unidade (já calculada na planilha).
+   * Chave = id da UO. Não substitui `quantidade`, que é a dotação.
+   */
+  somas?: Record<string, number>;
 }
+
+/** Coluna 0-based da soma que a DFD/IRP da unidade recebe. */
+export const COLUNA_SOMA_POR_UO: Record<string, number> = {
+  "12904": 30, // FUNDEB → AE
+  "12906": 40, // FMS → AO
+  "12909": 49, // FUNDO → AX
+};
 
 export interface ResultadoSecretaria {
   unidade: UnidadeProcessamento;
@@ -50,6 +64,8 @@ interface BaseRow {
   unidade: string;
   valorReferencia: number;
   sourceRow: number;
+  lote: string;
+  somas: Record<string, number>;
 }
 
 export const readWorkbook = readXlsxMatrix;
@@ -235,6 +251,7 @@ export function analisar(
       `Colunas obrigatórias ausentes na linha ${linhaCabecalho + 1}. Cabeçalho lido: ${header.join(" | ")}`,
     );
   }
+  const idxLote = findCol(header, (v) => v === "LOTE");
 
   // 2) montar dados base
   const base: BaseRow[] = [];
@@ -251,6 +268,12 @@ export function analisar(
       idxValorReferencia >= 0 ? toNumber(row[idxValorReferencia]) : 0;
     const unidade = String(row[idxUnidade] ?? "").trim();
     if (!natureza || !descricao || !especificacao || !unidade) continue;
+    const lote = idxLote >= 0 ? cleanText(row[idxLote]) : "";
+    const somas: Record<string, number> = {};
+    for (const [uo, col] of Object.entries(COLUNA_SOMA_POR_UO)) {
+      const q = toNumber(row[col]);
+      if (q > 0) somas[uo] = q;
+    }
     base.push({
       identificador,
       natureza,
@@ -259,6 +282,8 @@ export function analisar(
       unidade,
       valorReferencia,
       sourceRow: i,
+      lote,
+      somas,
     });
   }
   if (base.length === 0)
@@ -298,7 +323,18 @@ export function analisar(
       if (raw === null || raw === undefined || raw === "") continue;
       const quantidade = toNumber(raw);
       if (!Number.isFinite(quantidade) || quantidade <= 0) continue;
-      itens.push({ ...b, quantidade });
+      itens.push({
+        identificador: b.identificador,
+        natureza: b.natureza,
+        descricao: b.descricao,
+        especificacao: b.especificacao,
+        unidade: b.unidade,
+        valorReferencia: b.valorReferencia,
+        sourceRow: b.sourceRow,
+        quantidade,
+        lote: b.lote || undefined,
+        somas: b.somas,
+      });
       somaQuantidade += quantidade;
       somaValor += quantidade * (b.valorReferencia || 0);
     }

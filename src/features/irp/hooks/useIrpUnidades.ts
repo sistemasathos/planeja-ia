@@ -3,22 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { irpQueryKeys, type UnidadeIrp } from "../lib";
 
-// Índice 0-based da coluna de soma na planilha. O cadastro guarda a ref
-// 1-based; quando ela foi preenchida com o índice do mapa (30/40/49), o −1
-// lia a parcela anterior (AD, AN, AW) em vez do total.
-const COLUNA_SOMA_POR_UO: Record<string, number> = {
-  "12904": 30, // FUNDEB → AE (AC+AD)
-  "12906": 40, // FMS → AO (SUM AK:AN)
-  "12909": 49, // FUNDO → AX (SUM AS:AW)
-};
-
-function refColunaDaSecretaria(m2aRefColuna: number, m2aUoId: string | null): number {
-  const uo = String(m2aUoId ?? "").trim();
-  const soma = COLUNA_SOMA_POR_UO[uo];
-  if (soma !== undefined) return soma;
-  return m2aRefColuna - 1;
-}
-
 export interface UseIrpUnidadesResult {
   unidades: UnidadeIrp[] | undefined;
   unidadeById: Map<string, UnidadeIrp>;
@@ -66,7 +50,8 @@ export function useIrpUnidades(): UseIrpUnidadesResult {
       // O parser IRP (`src/lib/irp.ts`) consome índices 0-based sobre a matriz
       // da planilha, então convertemos aqui. Sem essa conversão, cada coluna
       // era lida com offset +1 (ex.: FF Fundeb caía em AD em vez de AC).
-      // FUNDEB, FMS e FUNDO ignoram o número gravado e leem a coluna de soma.
+      // A coluna de soma (FUNDEB/FMS/FUNDO) não entra aqui: a tela mostra a
+      // dotação. O envio da DFD/IRP lê a soma à parte.
       return rows
         .filter((r) => typeof r.m2a_ref_coluna === "number" && r.m2a_ref_coluna >= 1)
         .map<UnidadeIrp>((r) => ({
@@ -75,7 +60,7 @@ export function useIrpUnidades(): UseIrpUnidadesResult {
           nome: r.m2a_dotacao_default
             ? `${r.nome} · ${r.m2a_dotacao_default}`
             : r.nome,
-          ref_coluna: refColunaDaSecretaria(Number(r.m2a_ref_coluna), r.m2a_uo_id),
+          ref_coluna: Number(r.m2a_ref_coluna) - 1,
           secretaria_id: r.id,
         }));
     },

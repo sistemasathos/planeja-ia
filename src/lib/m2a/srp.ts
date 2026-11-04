@@ -28,7 +28,9 @@ export interface M2ASrpItemIRP {
   natureza: string;          // ex: "33903000"
   unidade: string;           // nome completo, ex: "UNIDADE", "SERVICO"
   valorReferencia?: number;
-  /** Mapa numero_secretaria → quantidade */
+  /** Número da coluna LOTE da pauta. */
+  lote?: string;
+  /** Mapa numero_secretaria ou `soma:{uo}` → quantidade */
   quantidades: Record<string, number>;
 }
 
@@ -56,6 +58,8 @@ export interface M2ASrpPayload {
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao?: string;
+  /** 1 = por item, 2 = por lote. */
+  criterio_apuracao?: "1" | "2" | string;
   numero?: string;
   /** numero da secretaria gerenciadora (para diferenciá-la das participantes) */
   gerenciadora_numero: number;

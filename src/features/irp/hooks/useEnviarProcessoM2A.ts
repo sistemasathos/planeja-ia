@@ -159,13 +159,18 @@ export function useEnviarProcessoM2A({
             natureza: it.natureza,
             unidade: it.unidade,
             valorReferencia: it.valorReferencia || 0,
+            lote: it.lote || undefined,
             quantidades: {},
           };
           map.set(key, agg);
         }
+        if (!agg.lote && it.lote) agg.lote = it.lote;
         const chave = chaveDaRow(row);
         agg.quantidades[chave] =
           Number(agg.quantidades[chave] ?? 0) + it.quantidade;
+        for (const [uo, q] of Object.entries(it.somas ?? {})) {
+          if (q > 0) agg.quantidades[`soma:${uo}`] = q;
+        }
       }
     }
     const itens = Array.from(map.values()).map(({ _key: _k, ...rest }) => rest);
@@ -221,6 +226,8 @@ export function useEnviarProcessoM2A({
         comissao_planejamento:
           processoM2AForm.comissao_planejamento.trim() || "3911",
         classificacao: processoM2AForm.classificacao.trim(),
+        criterio_apuracao:
+          processoM2AForm.criterio_apuracao === "2" ? "2" : "1",
         gerenciadora_numero,
         gerenciadora_chave,
         itens,

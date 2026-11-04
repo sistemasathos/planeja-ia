@@ -14,6 +14,7 @@
 
 import { m2a } from "../m2a-client.js";
 import { loadDoc, sleep, normalizeObjetoCaixaAlta } from "./utils.js";
+import { casaDescricao, normDesc } from "./lotes-processo.js";
 
 const DFD_INCLUIR_PATH = "/gestao_compras/formalizacao_demanda/incluir/";
 const DFD_TABELA_PATH =
@@ -551,12 +552,37 @@ export async function listarItensDoProcesso(processoId) {
 // pela descrição são movidos via alterar_sequencial.
 // ---------------------------------------------------------------------
 function norm(s) {
-  return String(s || "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  return normDesc(s);
+}
+
+function aplicarMovimentoLocal(tabela, itemId, seqAlvo) {
+  const item = tabela.find((it) => it.itemId === itemId);
+  if (!item) return;
+  const de = item.sequencialAtual;
+  if (!Number.isFinite(de)) {
+    item.sequencialAtual = seqAlvo;
+    return;
+  }
+  if (de === seqAlvo) return;
+  for (const it of tabela) {
+    if (it.itemId === itemId) {
+      it.sequencialAtual = seqAlvo;
+      continue;
+    }
+    const s = it.sequencialAtual;
+    if (!Number.isFinite(s)) continue;
+    if (de < seqAlvo && s > de && s <= seqAlvo) it.sequencialAtual = s - 1;
+    else if (de > seqAlvo && s >= seqAlvo && s < de) it.sequencialAtual = s + 1;
+  }
+}
+
+function acharItemNaOrdem(tabela, desejada, usados) {
+  const livres = tabela.filter((it) => !usados.has(it.itemId));
+  return (
+    livres.find((it) => norm(it.descricao) === desejada) ||
+    livres.find((it) => casaDescricao(it.descricao, desejada)) ||
+    null
+  );
 }
 
 export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
@@ -573,26 +599,23 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
     `[reordenarItensProcesso] processo ${processoId}: ${atual.length} item(ns) no portal; ${desejada.length} posição(ões) desejada(s).`,
   );
 
-  // Relê a tabela só depois de um POST (o portal renumera).
-  // O CSRF é reaproveitado; se a sessão cair, o POST pede outro e tenta de novo.
+  // A posição é atualizada na memória. A tabela do portal só é relida no fim.
   let reordenados = 0;
   let tabela = atual;
+  const usados = new Set();
   const csrfPath = `/processo_administrativo/${processoId}/`;
   let csrf = await m2a.getCsrf(csrfPath);
   const referer = `${m2a.http.defaults.baseURL || ""}/processo_administrativo/${processoId}/`;
   for (let i = 0; i < desejada.length; i++) {
     const seqAlvo = i + 1;
-    const alvo = tabela.find(
-      (it) =>
-        norm(it.descricao) === desejada[i] ||
-        norm(it.descricao).startsWith(desejada[i].slice(0, 40)),
-    );
+    const alvo = acharItemNaOrdem(tabela, desejada[i], usados);
     if (!alvo) {
       console.warn(
-        `[reordenarItensProcesso] item esperado na pos ${seqAlvo} não encontrado: "${desejada[i].slice(0, 60)}"`,
+        `[reordenarItensProcesso] item esperado na pos ${seqAlvo} não encontrado: "${desejada[i].slice(0, 80)}"`,
       );
       continue;
     }
+    usados.add(alvo.itemId);
     if (alvo.sequencialAtual === seqAlvo) continue;
     const path = ALTERAR_SEQUENCIAL_ITEM(alvo.itemId);
     const { res, csrf: csrfUsado } = await m2a.postFormRefreshingCsrf(path, {
@@ -617,17 +640,23 @@ export async function reordenarItensProcesso(processoId, descricoesOrdenadas) {
       continue;
     }
     reordenados++;
+    aplicarMovimentoLocal(tabela, alvo.itemId, seqAlvo);
     await sleep(80);
-    tabela = await listarItensDoProcesso(processoId);
   }
-  const final = tabela;
+  const final = await listarItensDoProcesso(processoId);
   const foraDeOrdem = [];
-  for (let i = 0; i < Math.min(desejada.length, final.length); i++) {
-    const itemNaPosicao = final.find((it) => it.sequencialAtual === i + 1) || final[i];
-    if (!itemNaPosicao) continue;
-    const descFinal = norm(itemNaPosicao.descricao);
-    if (descFinal !== desejada[i] && !descFinal.startsWith(desejada[i].slice(0, 40))) {
-      foraDeOrdem.push({ posicao: i + 1, esperado: desejada[i].slice(0, 80), encontrado: descFinal.slice(0, 80) });
+  for (let i = 0; i < desejada.length; i++) {
+    const itemNaPosicao = final.find((it) => it.sequencialAtual === i + 1);
+    if (!itemNaPosicao) {
+      foraDeOrdem.push({ posicao: i + 1, esperado: desejada[i].slice(0, 80), encontrado: "" });
+      continue;
+    }
+    if (!casaDescricao(itemNaPosicao.descricao, desejada[i])) {
+      foraDeOrdem.push({
+        posicao: i + 1,
+        esperado: desejada[i].slice(0, 80),
+        encontrado: norm(itemNaPosicao.descricao).slice(0, 80),
+      });
     }
   }
   if (foraDeOrdem.length) {

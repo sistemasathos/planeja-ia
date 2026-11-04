@@ -33,6 +33,8 @@ export interface IrpCabecalhoForm {
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao: string;
+  /** 1 = por item, 2 = por lote. */
+  criterio_apuracao: "1" | "2";
   /** Se false, fluxo "processo comum" (sem IRP/consolidação). */
   e_registro_preco: boolean;
 }
@@ -103,6 +105,7 @@ export function IrpCabecalhoCard({
         : form.responsavel_dfd,
       comissao_planejamento: "3911",
       classificacao: initialJob.classificacao ?? form.classificacao,
+      criterio_apuracao: form.criterio_apuracao === "2" ? "2" : "1",
       e_registro_preco: form.e_registro_preco ?? true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,6 +258,24 @@ export function IrpCabecalhoCard({
             onBlur={persist}
             placeholder="2026"
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Apuração *</Label>
+          <select
+            className="h-10 rounded-md border border-input bg-card px-3 text-sm"
+            value={form.criterio_apuracao === "2" ? "2" : "1"}
+            onChange={(e) =>
+              update({
+                criterio_apuracao: e.target.value === "2" ? "2" : "1",
+              })
+            }
+          >
+            <option value="1">Por item</option>
+            <option value="2">Por lote</option>
+          </select>
+          <p className="text-[10px] text-muted-foreground">
+            Por lote, a coluna LOTE da planilha define o grupo de cada item.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Classificação *</Label>

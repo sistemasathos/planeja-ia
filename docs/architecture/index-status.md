@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: CSRF após re-login; colunas de soma AE/AO/AX)  
+**Data:** 2026-11-04 (IRP: dotação na tela, soma na DFD/IRP, lotes e parágrafos da MIA)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

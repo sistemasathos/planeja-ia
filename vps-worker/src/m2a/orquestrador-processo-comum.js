@@ -24,6 +24,10 @@ import {
   reordenarItensProcesso,
 } from "./processo-comum.js";
 import { capturarIdsProcesso, atualizarProcesso } from "./processo-srp.js";
+import {
+  garantirLotesDoProcesso,
+  vincularItensAosLotes,
+} from "./lotes-processo.js";
 import { criarItemEAdicionarNaDFD } from "./irp-api.js";
 import {
   gerarJustificativaM2A,
@@ -343,9 +347,27 @@ export async function orquestrarCriacaoProcessoComum(
     objeto: payload.objeto,
     data_processo: payload.data,
     classificacao: payload.classificacao,
+    criterio_apuracao: payload.criterio_apuracao,
     unidade_orcamentaria_gerenciadora:
       payload.unidade_orcamentaria_gerenciadora || payload.unidade_orcamentaria,
   });
+
+  let lotesCriados = [];
+  if (String(payload.criterio_apuracao || "") === "2") {
+    try {
+      onProgress({
+        etapa: "criar_lotes",
+        mensagem: "Criando lotes do processo…",
+        progresso: 82,
+      });
+      lotesCriados = await garantirLotesDoProcesso(processoId, itens);
+      console.log(`[comum] lotes=${lotesCriados.length}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[comum] criar lotes: ${msg}`);
+      erros.push({ etapa: "criar_lotes", erro: msg });
+    }
+  }
 
   // 7. Vincula TODAS as DFDs ao processo — 1 POST por DFD (CSV não funciona
   //    no portal: persiste só a primeira).
@@ -469,6 +491,21 @@ export async function orquestrarCriacaoProcessoComum(
     `[comum] justificativas: ${justificativasOk}/${dfdsCriadas.length} aplicadas (texto único)`,
   );
 
+  if (lotesCriados.length) {
+    try {
+      onProgress({
+        etapa: "vincular_lotes",
+        mensagem: "Vinculando itens aos lotes…",
+        progresso: 98,
+      });
+      const r = await vincularItensAosLotes(processoId, lotesCriados, itens);
+      console.log(`[comum] itens em lotes=${r.vinculados} semMatch=${r.semMatch}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[comum] vincular lotes: ${msg}`);
+      erros.push({ etapa: "vincular_lotes", erro: msg });
+    }
+  }
 
   onProgress({
     etapa: "concluido",

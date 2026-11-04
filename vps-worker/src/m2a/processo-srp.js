@@ -344,7 +344,7 @@ export async function atualizarProcesso(processoId, payload) {
     classificacao,
     criterio_julgamento: "1",
     valor_aceitavel: "1",
-    criterio_apuracao: "1",
+    criterio_apuracao: String(payload.criterio_apuracao || "1").trim() === "2" ? "2" : "1",
     comissao_licitacao: "3909",
     periodo_vigencia: "2",
     valor_periodo_vigencia: "12",

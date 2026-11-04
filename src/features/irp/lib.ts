@@ -68,6 +68,8 @@ export type ProcessoM2AForm = {
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao: string;
+  /** 1 = por item, 2 = por lote. */
+  criterio_apuracao: "1" | "2";
   e_registro_preco: boolean;
 };
 
@@ -167,6 +169,7 @@ export function buildDefaultProcessoM2AForm(): ProcessoM2AForm {
     responsavel_dfd: "",
     comissao_planejamento: "3911",
     classificacao: "1",
+    criterio_apuracao: "1",
     e_registro_preco: true,
   };
 }

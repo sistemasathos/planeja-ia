@@ -40,6 +40,8 @@ export interface M2AComumPayload {
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao?: string;
+  /** 1 = por item, 2 = por lote. */
+  criterio_apuracao?: "1" | "2" | string;
   numero?: string;
   gerenciadora_numero: number;
   gerenciadora_chave?: string;

@@ -26,6 +26,10 @@ import {
 } from "./processo-srp.js";
 import { reordenarItensProcesso } from "./processo-comum.js";
 import {
+  garantirLotesDoProcesso,
+  vincularItensAosLotes,
+} from "./lotes-processo.js";
+import {
   criarItemEAdicionarNaDFD,
   gerarIntencoes,
   listarIntencoes,
@@ -55,8 +59,28 @@ function chaveSecretaria(sec) {
   return String(sec?.numero ?? "");
 }
 
+const UOS_SOMA = new Set(["12904", "12906", "12909"]);
+
+function uoDaSoma(sec, chavesExtras = []) {
+  const candidatos = [];
+  for (const extra of chavesExtras) {
+    const s = String(extra || "");
+    if (s.startsWith("uo:")) candidatos.push(s.slice(3));
+  }
+  const daSecretaria = String(sec?.m2a_uo_id || "").trim();
+  if (daSecretaria) candidatos.push(daSecretaria);
+  return candidatos.find((id) => UOS_SOMA.has(id)) || "";
+}
+
 function quantidadeDoItem(item, sec, chavesExtras = []) {
   const quantidades = item?.quantidades ?? {};
+  // FUNDEB, FMS e FUNDO recebem a coluna de soma da pauta, uma vez.
+  // A dotação (FF, FI, MAC…) continua na chave da coluna, para a tela.
+  const uoSoma = uoDaSoma(sec, chavesExtras);
+  if (uoSoma && Object.prototype.hasOwnProperty.call(quantidades, `soma:${uoSoma}`)) {
+    const q = Number(quantidades[`soma:${uoSoma}`] ?? 0);
+    return Number.isFinite(q) ? q : 0;
+  }
   const chaves = [chaveSecretaria(sec), ...chavesExtras, String(sec?.numero ?? "")].filter(Boolean);
   for (const chave of chaves) {
     if (Object.prototype.hasOwnProperty.call(quantidades, chave)) {
@@ -138,12 +162,30 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
     objeto: payload.objeto,
     data_processo: payload.data,
     classificacao: payload.classificacao,
+    criterio_apuracao: payload.criterio_apuracao,
     unidade_orcamentaria_gerenciadora:
       payload.unidade_orcamentaria_gerenciadora || payload.unidade_orcamentaria,
   });
 
-  // 4. Inserir itens na DFD gerenciadora
   const erros = [];
+  let lotesCriados = [];
+  if (String(payload.criterio_apuracao || "") === "2") {
+    try {
+      onProgress({
+        etapa: "criar_lotes",
+        mensagem: "Criando lotes do processo…",
+        progresso: 19,
+      });
+      lotesCriados = await garantirLotesDoProcesso(processoId, itens);
+      console.log(`[irp] lotes=${lotesCriados.length}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[irp] criar lotes: ${msg}`);
+      erros.push({ etapa: "criar_lotes", erro: msg });
+    }
+  }
+
+  // 4. Inserir itens na DFD gerenciadora
   const itensCriados = []; // { input, itemPadronizadoId }
   for (let i = 0; i < itens.length; i++) {
     const item = itens[i];
@@ -453,6 +495,22 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
     const msg = String(err?.message ?? err);
     console.error(`[justificativa] falhou: ${msg}`);
     erros.push({ etapa: "justificativa", erro: msg });
+  }
+
+  if (lotesCriados.length) {
+    try {
+      onProgress({
+        etapa: "vincular_lotes",
+        mensagem: "Vinculando itens aos lotes…",
+        progresso: 99,
+      });
+      const r = await vincularItensAosLotes(processoId, lotesCriados, itens);
+      console.log(`[irp] itens em lotes=${r.vinculados} semMatch=${r.semMatch}`);
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      console.error(`[irp] vincular lotes: ${msg}`);
+      erros.push({ etapa: "vincular_lotes", erro: msg });
+    }
   }
 
   onProgress({
