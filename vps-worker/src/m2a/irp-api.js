@@ -37,12 +37,17 @@ export function sanitizeQuantidadeM2A(value) {
 // alias retrocompatível
 const sanitizeQuantidadeDFD = sanitizeQuantidadeM2A;
 import { resolverNaturezaId } from "./irp-naturezas.js";
-import { resolverUnidadeId, nomeUnidadeNormalizado } from "./irp-unidades.js";
+import {
+  resolverUnidadeCatalogoPai,
+  descricaoUnidadeEquivale,
+} from "./irp-unidades.js";
 
 const URL_ITEM_TEMP = "/catalogo/itemtemporario/incluir/";
 const URL_ITEM_JSON = (id) => `/catalogo/itempadronizado-json/${id}`;
+const URL_UNIDADE_FORNECIMENTO_INCLUIR = "/catalogo/unidadefornecimento/incluir/";
 const URL_SOLICITACAO_ITEM = (dfdId) =>
   `/gestao_compras/solicitacao_item/incluir/${dfdId}/`;
+const cacheUnidadeFornecimento = new Map();
 const URL_SOLICITACAO_ITEM_TABELA = (dfdId) =>
   `/gestao_compras/solicitacao_item/tabela/${dfdId}/?page_size=1000`;
 const URL_GERAR_INTENCOES = (dfdId) =>
@@ -282,12 +287,7 @@ export async function cadastrarItemTemporario({
       `Natureza "${natureza}" não está mapeada em irp-naturezas.js`,
     );
   }
-  const unidadeId = resolverUnidadeId(unidade);
-  if (!unidadeId) {
-    throw new Error(
-      `Unidade "${unidade}" (normalizada: "${nomeUnidadeNormalizado(unidade)}") não está mapeada em irp-unidades.js`,
-    );
-  }
+  const unidadeId = resolverUnidadeCatalogoPai(unidade);
 
   const csrf = await getCsrfGlobal();
   const body = new URLSearchParams();
@@ -332,6 +332,19 @@ export async function cadastrarItemTemporario({
 // =====================================================================
 // PASSO 2 (helper) — pega unidade_fornecimento_id do item padronizado
 // =====================================================================
+function objetoUnidadeFornecimento(json) {
+  if (Array.isArray(json?.unidade_fornecimento) && json.unidade_fornecimento[0]) {
+    return json.unidade_fornecimento[0];
+  }
+  if (json?.unidade_fornecimento && typeof json.unidade_fornecimento === "object") {
+    return json.unidade_fornecimento;
+  }
+  if (Array.isArray(json?.unidades_fornecimento) && json.unidades_fornecimento[0]) {
+    return json.unidades_fornecimento[0];
+  }
+  return null;
+}
+
 export async function obterUnidadeFornecimento(itemPadronizadoId) {
   const res = await m2a.get(URL_ITEM_JSON(itemPadronizadoId));
   let json = null;
@@ -342,25 +355,117 @@ export async function obterUnidadeFornecimento(itemPadronizadoId) {
       `obterUnidadeFornecimento: resposta não-JSON (${res.html.slice(0, 200)})`,
     );
   }
-  // o portal devolve { unidade_fornecimento: { id: 92797, ... } } ou
-  // {unidades_fornecimento: [{id, ...}]} — cobrimos os dois.
-  // A Bíblia da M2A define a forma canônica: unidade_fornecimento[0].id (array).
-  // Mantemos fallbacks defensivos para outras formas já vistas em produção.
+  const obj = objetoUnidadeFornecimento(json);
   const ufId =
-    json?.unidade_fornecimento?.[0]?.id ??
-    json?.unidade_fornecimento?.id ??
+    obj?.id ??
     (typeof json?.unidade_fornecimento === "number" || typeof json?.unidade_fornecimento === "string"
       ? json.unidade_fornecimento
       : null) ??
-    json?.unidades_fornecimento?.[0]?.id ??
     json?.id_unidade_fornecimento ??
     null;
-  if (!ufId) {
+  if (!ufId) return null;
+  return {
+    id: String(ufId),
+    descricao: String(obj?.descricao || obj?.nome || ""),
+  };
+}
+
+export async function criarUnidadeFornecimento({
+  dfdId,
+  descricaoTemp,
+  unidadeCatalogoId,
+  itemPadronizadoId,
+}) {
+  const descricao = String(descricaoTemp || "").trim();
+  if (!descricao) {
+    throw new Error("criarUnidadeFornecimento: descricao_temp vazia.");
+  }
+  const csrfPath = URL_SOLICITACAO_ITEM(dfdId);
+  const { res } = await m2a.postFormRefreshingCsrf(URL_UNIDADE_FORNECIMENTO_INCLUIR, {
+    csrfPath,
+    buildBody: (csrf) => {
+      const body = new URLSearchParams();
+      body.set("csrfmiddlewaretoken", csrf);
+      body.set("descricao_temp", descricao);
+      body.set("unidade", String(unidadeCatalogoId));
+      body.set("quantitativo", "1");
+      body.set("medida", "5");
+      body.set("item_padronizado", String(itemPadronizadoId));
+      return body;
+    },
+    headers: {
+      Referer: `${m2a.http.defaults.baseURL || ""}${csrfPath}`,
+    },
+  });
+  if (res.status >= 400) {
     throw new Error(
-      `obterUnidadeFornecimento: id ausente no JSON (${JSON.stringify(json).slice(0, 300)})`,
+      `criarUnidadeFornecimento: status ${res.status} (${String(res.html || "").slice(0, 200)})`,
     );
   }
-  return String(ufId);
+  let json = null;
+  try {
+    json = JSON.parse(res.html);
+  } catch {
+    throw new Error(
+      `criarUnidadeFornecimento: resposta não-JSON (${String(res.html || "").slice(0, 200)})`,
+    );
+  }
+  const id =
+    json?.unidade_fornecimento?.id ??
+    json?.unidade_fornecimento?.[0]?.id ??
+    json?.id ??
+    null;
+  if (!id) {
+    throw new Error(
+      `criarUnidadeFornecimento: id ausente (${JSON.stringify(json).slice(0, 300)})`,
+    );
+  }
+  console.log(
+    `[irp-api] unidade fornecimento criada: id=${id} descr="${descricao}" item=${itemPadronizadoId}`,
+  );
+  return String(id);
+}
+
+function chaveCacheUnidadeFornecimento(itemPadronizadoId, descricaoTemp) {
+  return `${itemPadronizadoId}|${String(descricaoTemp || "").trim().toUpperCase()}`;
+}
+
+export async function garantirUnidadeFornecimento({
+  dfdId,
+  itemPadronizadoId,
+  descricaoPlanilha,
+  unidadeCatalogoId,
+}) {
+  const descricao = String(descricaoPlanilha || "").trim();
+  const cacheKey = chaveCacheUnidadeFornecimento(itemPadronizadoId, descricao);
+  if (cacheUnidadeFornecimento.has(cacheKey)) {
+    return cacheUnidadeFornecimento.get(cacheKey);
+  }
+  const existente = await obterUnidadeFornecimento(itemPadronizadoId);
+  if (
+    existente?.id &&
+    existente.descricao &&
+    descricao &&
+    descricaoUnidadeEquivale(existente.descricao, descricao)
+  ) {
+    cacheUnidadeFornecimento.set(cacheKey, existente.id);
+    return existente.id;
+  }
+  if (!descricao) {
+    if (existente?.id) {
+      cacheUnidadeFornecimento.set(cacheKey, existente.id);
+      return existente.id;
+    }
+    throw new Error("garantirUnidadeFornecimento: unidade da planilha vazia.");
+  }
+  const criado = await criarUnidadeFornecimento({
+    dfdId,
+    descricaoTemp: descricao,
+    unidadeCatalogoId,
+    itemPadronizadoId,
+  });
+  cacheUnidadeFornecimento.set(cacheKey, criado);
+  return criado;
 }
 
 // =====================================================================
@@ -810,14 +915,19 @@ export async function criarItemEAdicionarNaDFD({
   quantidadeGerenciadora,
   knownBeforeCount,
 }) {
-  const { itemPadronizadoId, naturezaId } = await cadastrarItemTemporario({
+  const { itemPadronizadoId, naturezaId, unidadeId } = await cadastrarItemTemporario({
     descricao,
     especificacao,
     unidade,
     natureza,
   });
   await sleep(300);
-  const ufId = await obterUnidadeFornecimento(itemPadronizadoId);
+  const ufId = await garantirUnidadeFornecimento({
+    dfdId: dfdGerenciadoraId,
+    itemPadronizadoId,
+    descricaoPlanilha: unidade,
+    unidadeCatalogoId: unidadeId,
+  });
   await sleep(200);
   await incluirItemNaDFD({
     dfdId: dfdGerenciadoraId,

@@ -65,6 +65,8 @@ export type ProcessoM2AForm = {
   orgao_solicitante: string;
   unidade_orcamentaria: string;
   unidade_orcamentaria_gerenciadora: string;
+  /** Coluna da IRP (`col:{ref}` ou `row:{key}`) usada nos quantitativos da gerenciadora. */
+  gerenciadora_chave: string;
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao: string;
@@ -93,9 +95,30 @@ export const irpQueryKeys = {
   jobSecRows: (jobId: string | null) => ["irp-job-sec-rows", jobId] as const,
 };
 
+export type GerenciadoraOpcao = {
+  chave: string;
+  label: string;
+  orgaoId: string;
+  uoId: string;
+};
+
 // ============================================================
 // Helpers puros
 // ============================================================
+export function chaveDaIrpImportRow(row: IrpImportRow): string {
+  const refColuna = row.resultado?.unidade.ref_coluna;
+  return refColuna != null ? `col:${refColuna}` : `row:${row.key}`;
+}
+
+export function rotuloGerenciadora(row: IrpImportRow): string {
+  const rotulo = row.cabecalhoColuna?.trim();
+  const nome =
+    row.secretaria?.sigla?.trim() ||
+    row.secretaria?.nome?.trim() ||
+    row.nome;
+  return rotulo ? `${nome} / ${rotulo}` : nome;
+}
+
 export function todayISO(): string {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -168,6 +191,7 @@ export function buildDefaultProcessoM2AForm(): ProcessoM2AForm {
     orgao_solicitante: "",
     unidade_orcamentaria: "",
     unidade_orcamentaria_gerenciadora: "",
+    gerenciadora_chave: "",
     responsavel_dfd: "",
     comissao_planejamento: "3911",
     classificacao: "1",

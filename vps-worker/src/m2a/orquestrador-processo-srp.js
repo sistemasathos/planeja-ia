@@ -126,9 +126,22 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
   const participantes = todasSecretarias.filter(
     (s) => gerenciadoraChave ? chaveSecretaria(s) !== gerenciadoraChave : Number(s.numero) !== gerenciadoraNumero,
   );
-  const secretariaGerenciadora = todasSecretarias.find((s) => chaveSecretaria(s) === gerenciadoraChave) ||
-    todasSecretarias.find((s) => Number(s.numero) === gerenciadoraNumero) ||
-    { numero: gerenciadoraNumero, chave: gerenciadoraChave };
+  let secretariaGerenciadora = gerenciadoraChave
+    ? todasSecretarias.find((s) => chaveSecretaria(s) === gerenciadoraChave)
+    : null;
+  if (!secretariaGerenciadora && !gerenciadoraChave) {
+    secretariaGerenciadora =
+      todasSecretarias.find((s) => Number(s.numero) === gerenciadoraNumero) ||
+      { numero: gerenciadoraNumero, chave: gerenciadoraChave };
+  }
+  if (!secretariaGerenciadora) {
+    throw new Error(
+      `gerenciadora_chave="${gerenciadoraChave}" não está em secretariasParticipantes.`,
+    );
+  }
+  console.log(
+    `[irp] gerenciadora=${secretariaGerenciadora.sigla || secretariaGerenciadora.nome || gerenciadoraNumero} chave=${gerenciadoraChave || chaveSecretaria(secretariaGerenciadora)} uo=${secretariaGerenciadora.m2a_uo_id || "-"}`,
+  );
 
   // 1. DFD
   onProgress({ etapa: "criar_dfd", mensagem: "Criando DFD da Gerenciadora…", progresso: 4 });
@@ -202,6 +215,11 @@ export async function orquestrarCriacaoProcesso(payload, onProgress = () => {}) 
   for (let i = 0; i < itens.length; i++) {
     const item = itens[i];
     const qtyGer = quantidadeDoItem(item, secretariaGerenciadora, [gerenciadoraChave]);
+    if (i === 0) {
+      console.log(
+        `[irp] qtyGer item1=${qtyGer} chave=${gerenciadoraChave || chaveSecretaria(secretariaGerenciadora)} descr="${String(item.descricao || "").slice(0, 60)}"`,
+      );
+    }
     onProgress({
       etapa: "incluir_itens",
       mensagem: `Cadastrando item ${i + 1}/${itens.length}: ${String(item.descricao || "").slice(0, 60)}…`,

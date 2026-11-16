@@ -322,6 +322,7 @@ function Page() {
                       onSubmit={enviarM2A.abrirConfirmacaoProcessoM2A}
                       submitDisabled={cabecalhoSubmitDisabled}
                       submitHelper={cabecalhoHelper}
+                      gerenciadoraOpcoes={importRows.gerenciadoraOpcoes}
                     />
                   </div>
                 )}

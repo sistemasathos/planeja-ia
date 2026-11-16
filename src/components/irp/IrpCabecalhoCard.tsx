@@ -19,7 +19,11 @@ import {
   getOrgaoMapping,
   findOrgaoByUO,
 } from "@/lib/m2a";
-import { datasManifestacaoIrp, proximoDiaUtil } from "@/features/irp/lib";
+import {
+  datasManifestacaoIrp,
+  proximoDiaUtil,
+  type GerenciadoraOpcao,
+} from "@/features/irp/lib";
 
 type IrpJob = Database["public"]["Tables"]["irp_jobs"]["Row"];
 
@@ -31,6 +35,7 @@ export interface IrpCabecalhoForm {
   orgao_solicitante: string;
   unidade_orcamentaria: string;
   unidade_orcamentaria_gerenciadora: string;
+  gerenciadora_chave: string;
   responsavel_dfd: string;
   comissao_planejamento: string;
   classificacao: string;
@@ -49,6 +54,7 @@ interface Props {
   onSubmit: () => void;
   submitDisabled: boolean;
   submitHelper?: string;
+  gerenciadoraOpcoes?: GerenciadoraOpcao[];
 }
 
 const CLASSIFICACAO_OPTIONS = [
@@ -68,6 +74,7 @@ export function IrpCabecalhoCard({
   onSubmit,
   submitDisabled,
   submitHelper,
+  gerenciadoraOpcoes = [],
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -102,6 +109,7 @@ export function IrpCabecalhoCard({
       orgao_solicitante: orgao,
       unidade_orcamentaria: uo,
       unidade_orcamentaria_gerenciadora: uo,
+      gerenciadora_chave: form.gerenciadora_chave,
       responsavel_dfd: mapping
         ? String(mapping.responsavel_dfd_id)
         : form.responsavel_dfd,
@@ -315,6 +323,46 @@ export function IrpCabecalhoCard({
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex flex-col gap-1.5 md:col-span-3">
+          <Label>Unidade gerenciadora *</Label>
+          <select
+            className="h-10 rounded-md border border-input bg-card px-3 text-sm"
+            value={form.gerenciadora_chave}
+            onChange={(e) => {
+              const chave = e.target.value;
+              const opcao = gerenciadoraOpcoes.find((o) => o.chave === chave);
+              const mapping = opcao?.orgaoId
+                ? getOrgaoMapping(opcao.orgaoId)
+                : null;
+              update({
+                gerenciadora_chave: chave,
+                orgao_solicitante: opcao?.orgaoId || form.orgao_solicitante,
+                unidade_orcamentaria: opcao?.uoId || form.unidade_orcamentaria,
+                unidade_orcamentaria_gerenciadora:
+                  opcao?.uoId || form.unidade_orcamentaria_gerenciadora,
+                responsavel_dfd: mapping
+                  ? String(mapping.responsavel_dfd_id)
+                  : form.responsavel_dfd,
+              });
+              setTimeout(persist, 0);
+            }}
+            disabled={gerenciadoraOpcoes.length === 0}
+          >
+            <option value="">
+              {gerenciadoraOpcoes.length
+                ? "— selecione a coluna gerenciadora —"
+                : "selecione as planilhas da IRP"}
+            </option>
+            {gerenciadoraOpcoes.map((o) => (
+              <option key={o.chave} value={o.chave}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-muted-foreground">
+            Quantitativos da DFD e da IRP gerenciadora vêm desta coluna da planilha, não da primeira da lista.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Órgão solicitante *</Label>

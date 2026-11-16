@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-04 (IRP: reordenar itens opcional, desligado por padrão)  
+**Data:** 2026-11-16 (IRP: gerenciadora por coluna; criar unidade de fornecimento se faltar)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

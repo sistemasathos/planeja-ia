@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AnaliseIRP } from "@/lib/irp";
 import { findIrpUnidadeCanonicaByRefColuna, getOrgaoMapping } from "@/lib/m2a";
-import type {
-  IrpImportRow,
-  ProcessoM2AForm,
-  ResultadoSalvoIRP,
-  SecretariaM2A,
-  UnidadeIrp,
+import {
+  chaveDaIrpImportRow,
+  rotuloGerenciadora,
+  type GerenciadoraOpcao,
+  type IrpImportRow,
+  type ProcessoM2AForm,
+  type ResultadoSalvoIRP,
+  type SecretariaM2A,
+  type UnidadeIrp,
 } from "../lib";
 
 export interface UseIrpImportRowsOptions {
@@ -36,6 +39,7 @@ export interface UseIrpImportRowsResult {
   toggleIrpImportSelection: (key: string, checked: boolean) => void;
   toggleAllIrpImportSelection: (checked: boolean) => void;
   enrichRowForM2A: (row: IrpImportRow) => EnrichedM2AIds;
+  gerenciadoraOpcoes: GerenciadoraOpcao[];
 }
 
 export function useIrpImportRows({
@@ -160,6 +164,23 @@ export function useIrpImportRows({
     [enrichRowForM2A, selectedImportRows],
   );
 
+  const gerenciadoraOpcoes = useMemo<GerenciadoraOpcao[]>(
+    () =>
+      selectedImportRows
+        .filter((row) => row.secretaria)
+        .map((row) => {
+          const ids = enrichRowForM2A(row);
+          return {
+            chave: chaveDaIrpImportRow(row),
+            label: rotuloGerenciadora(row),
+            orgaoId: ids.orgaoId || "",
+            uoId: ids.uoId || "",
+          };
+        })
+        .filter((o) => o.chave && o.orgaoId && o.uoId),
+    [enrichRowForM2A, selectedImportRows],
+  );
+
   const allImportRowsSelected =
     importableRows.length > 0 &&
     importableRows.every((row) => selectedIrpImportIds.includes(row.key));
@@ -197,31 +218,43 @@ export function useIrpImportRows({
     });
   }, [fileName, savedFileName, setProcessoM2AForm]);
 
-  // Auto-preenche órgão/unidade com base na primeira linha válida.
+  // Auto-preenche gerenciadora/órgão/UO só quando ainda vazios.
   useEffect(() => {
-    const first = selectedImportRows.find((row) => {
-      const ids = enrichRowForM2A(row);
-      return ids.orgaoId && ids.uoId;
-    });
-    if (!first) return;
-    const ids = enrichRowForM2A(first);
-    const orgaoId = ids.orgaoId || "";
-    const uoId = ids.uoId || "";
+    const primeira = gerenciadoraOpcoes[0];
+    if (!primeira) return;
     setProcessoM2AForm((current) => {
-      const nextOrgao = current.orgao_solicitante || orgaoId;
+      const chave = current.gerenciadora_chave.trim();
+      const opcao =
+        (chave && gerenciadoraOpcoes.find((o) => o.chave === chave)) ||
+        (chave ? null : primeira);
+      if (!opcao) return current;
+      const nextOrgao = current.orgao_solicitante || opcao.orgaoId;
       const mapping = nextOrgao ? getOrgaoMapping(nextOrgao) : null;
+      const nextChave = chave || opcao.chave;
+      const nextUo = current.unidade_orcamentaria || opcao.uoId;
+      const nextUoGer =
+        current.unidade_orcamentaria_gerenciadora || opcao.uoId;
+      if (
+        current.gerenciadora_chave === nextChave &&
+        current.orgao_solicitante === nextOrgao &&
+        current.unidade_orcamentaria === nextUo &&
+        current.unidade_orcamentaria_gerenciadora === nextUoGer &&
+        current.responsavel_dfd
+      ) {
+        return current;
+      }
       return {
         ...current,
+        gerenciadora_chave: nextChave,
         orgao_solicitante: nextOrgao,
-        unidade_orcamentaria: current.unidade_orcamentaria || uoId,
-        unidade_orcamentaria_gerenciadora:
-          current.unidade_orcamentaria_gerenciadora || uoId,
+        unidade_orcamentaria: nextUo,
+        unidade_orcamentaria_gerenciadora: nextUoGer,
         responsavel_dfd:
           current.responsavel_dfd ||
           (mapping ? String(mapping.responsavel_dfd_id) : ""),
       };
     });
-  }, [enrichRowForM2A, selectedImportRows, setProcessoM2AForm]);
+  }, [gerenciadoraOpcoes, setProcessoM2AForm]);
 
   // Suprime lint sobre form não usado diretamente (mantido para futuras regras).
   void processoM2AForm;
@@ -236,5 +269,6 @@ export function useIrpImportRows({
     toggleIrpImportSelection,
     toggleAllIrpImportSelection,
     enrichRowForM2A,
+    gerenciadoraOpcoes,
   };
 }

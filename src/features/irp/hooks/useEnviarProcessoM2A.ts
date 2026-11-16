@@ -15,6 +15,7 @@ import type {
   ProcessoM2AForm,
   SecretariaM2A,
 } from "../lib";
+import { chaveDaIrpImportRow } from "../lib";
 import type { EnrichedM2AIds } from "./useIrpImportRows";
 
 export interface UseEnviarProcessoM2AOptions {
@@ -75,6 +76,7 @@ export function useEnviarProcessoM2A({
       ["objeto", "Objeto"],
       ["data", "Data"],
       ["ano_orcamento", "Ano orcamentario"],
+      ["gerenciadora_chave", "Unidade gerenciadora"],
       ["orgao_solicitante", "Orgao solicitante"],
       ["unidade_orcamentaria", "Unidade orcamentaria"],
       ["responsavel_dfd", "Agente de planejamento"],
@@ -101,20 +103,34 @@ export function useEnviarProcessoM2A({
     // Chave de participante = coluna da planilha (ref_coluna). Assim, mesmo quando
     // várias colunas caem na mesma UO (ex.: FUNDEB FF e FUNDEB FI), cada coluna
     // vira uma DFD independente — igual ao fluxo por dotação do contrato SRP.
-    const chaveDaRow = (r: IrpImportRow): string => {
-      const refColuna = r.resultado?.unidade.ref_coluna;
-      return refColuna != null ? `col:${refColuna}` : `row:${r.key}`;
-    };
-
+    const chaveDaRow = chaveDaIrpImportRow;
+    const chaveForm = processoM2AForm.gerenciadora_chave.trim();
     const uoGerenciadora =
       processoM2AForm.unidade_orcamentaria_gerenciadora.trim() ||
       processoM2AForm.unidade_orcamentaria.trim();
+    const orgaoGerenciadora = processoM2AForm.orgao_solicitante.trim();
+    const rowPorChave = chaveForm
+      ? selectedImportRows.find((r) => chaveDaRow(r) === chaveForm)
+      : null;
+    if (chaveForm && !rowPorChave) {
+      throw new Error(
+        "Unidade gerenciadora não está entre as planilhas selecionadas. Escolha a coluna gerenciadora no cabeçalho.",
+      );
+    }
     const rowGerenciadora =
-      selectedImportRows.find(
-        (r) => enrichRowForM2A(r).uoId === uoGerenciadora,
-      ) || selectedImportRows[0];
+      rowPorChave ||
+      selectedImportRows.find((r) => {
+        const ids = enrichRowForM2A(r);
+        return (
+          ids.uoId === uoGerenciadora &&
+          (!orgaoGerenciadora || ids.orgaoId === orgaoGerenciadora)
+        );
+      }) ||
+      null;
     if (!rowGerenciadora?.secretaria) {
-      throw new Error("Secretaria gerenciadora não identificada.");
+      throw new Error(
+        "Unidade gerenciadora não está entre as planilhas selecionadas. Escolha a coluna gerenciadora no cabeçalho.",
+      );
     }
     const gerenciadora_numero = rowGerenciadora.secretaria.numero;
     const gerenciadora_chave = chaveDaRow(rowGerenciadora);
@@ -175,6 +191,12 @@ export function useEnviarProcessoM2A({
     }
     const itens = Array.from(map.values()).map(({ _key: _k, ...rest }) => rest);
     console.log("[irp-envio] participantes por coluna:", {
+      gerenciadora: {
+        chave: gerenciadora_chave,
+        numero: gerenciadora_numero,
+        nome: rowGerenciadora.secretaria.nome,
+        uo: enrichRowForM2A(rowGerenciadora).uoId,
+      },
       totalParticipantes: secretariasParticipantes.length,
       totalLinhasSelecionadas: selectedImportRows.length,
       chaves: secretariasParticipantes.map((s) => ({

@@ -226,6 +226,13 @@ export function resolverUnidadeId(unidadeRaw) {
   return null;
 }
 
+/** Tipo-pai do formulário M2A. Match exato no mapa; senão UNIDADE (2). */
+export const UNIDADE_CATALOGO_PADRAO = "2";
+
+export function resolverUnidadeCatalogoPai(unidadeRaw) {
+  return resolverUnidadeId(unidadeRaw) || UNIDADE_CATALOGO_PADRAO;
+}
+
 export function nomeUnidadeNormalizado(unidadeRaw) {
   const norm = normalizar(unidadeRaw);
   for (const v of variantes(norm)) {
@@ -233,4 +240,10 @@ export function nomeUnidadeNormalizado(unidadeRaw) {
     if (MAPA[v]) return v;
   }
   return norm;
+}
+
+export function descricaoUnidadeEquivale(a, b) {
+  const na = nomeUnidadeNormalizado(a);
+  const nb = nomeUnidadeNormalizado(b);
+  return Boolean(na) && na === nb;
 }

@@ -117,10 +117,24 @@ export async function orquestrarCriacaoProcessoComum(
   }
   const gerenciadoraChave = String(payload.gerenciadora_chave || "").trim();
   const gerenciadoraNumero = Number(payload.gerenciadora_numero || 0);
-  const secretariaGerenciadora =
-    todasSecretarias.find((s) => chaveSecretaria(s) === gerenciadoraChave) ||
-    todasSecretarias.find((s) => Number(s.numero) === gerenciadoraNumero) ||
-    todasSecretarias[0];
+  let secretariaGerenciadora = gerenciadoraChave
+    ? todasSecretarias.find((s) => chaveSecretaria(s) === gerenciadoraChave)
+    : null;
+  if (!secretariaGerenciadora && !gerenciadoraChave) {
+    secretariaGerenciadora =
+      todasSecretarias.find((s) => Number(s.numero) === gerenciadoraNumero) ||
+      todasSecretarias[0];
+  }
+  if (!secretariaGerenciadora) {
+    throw new Error(
+      gerenciadoraChave
+        ? `gerenciadora_chave="${gerenciadoraChave}" não está em secretariasParticipantes.`
+        : "Secretaria gerenciadora não identificada.",
+    );
+  }
+  console.log(
+    `[irp-comum] gerenciadora=${secretariaGerenciadora.sigla || secretariaGerenciadora.nome || gerenciadoraNumero} chave=${gerenciadoraChave || chaveSecretaria(secretariaGerenciadora)} uo=${secretariaGerenciadora.m2a_uo_id || "-"}`,
+  );
 
   // Ordena: gerenciadora primeiro, demais depois.
   const ordenadas = [
