@@ -3,9 +3,9 @@ import {
   SITUACOES,
   corValida,
   diasDesde,
-  formatarData,
   formatarValorCampo,
   rgbDe,
+  siglaIdentificador,
   type Campo,
   type CriterioFiltro,
   type Etapa,
@@ -66,8 +66,8 @@ export type Relatorio = {
   emitidoEm: Date;
 };
 
-const TITULO = "Relatório de andamento das tarefas";
-const SUBTITULO = "Acompanhamento das atividades da equipe, organizado por etapa.";
+const TITULO = "Acompanhamento de processo";
+const SUBTITULO = "Demandas organizadas por etapa.";
 
 /** Identificação institucional opcional, configurada no build (não há valor padrão). */
 function identificacao() {
@@ -82,7 +82,7 @@ function identificacao() {
 
 function rotuloSecretarias(t: Tarefa, siglas: Map<string, string>): string {
   if (t.todas_secretarias) return "Todas";
-  const lista = t.secretaria_ids.map((id) => siglas.get(id) ?? "?");
+  const lista = [...new Set(t.secretaria_ids.map((id) => siglas.get(id) ?? "?"))];
   if (lista.length === 0) return "—";
   if (lista.length <= 4) return lista.join(", ");
   return `Diversas (${lista.length})`;
@@ -136,10 +136,21 @@ export function montarRelatorio(ctx: ContextoRelatorio): Relatorio {
           processo: t.processo_id ? (ctx.processos.get(t.processo_id)?.numero ?? "") : "",
           fase: fase ? (t.campos[fase.id] ?? "") : "",
           dias: diasDesde(t.etapa_desde),
-          criada: formatarData(t.created_at),
-          extras: campos
-            .filter((c) => !c.usa_como_fase && t.campos[c.id]?.trim())
-            .map((c) => ({ nome: c.nome, valor: formatarValorCampo(c, t.campos[c.id]) })),
+          criada: textoDesde(t.etapa_desde, diasDesde(t.etapa_desde)),
+          extras: [
+            ...ctx.campos
+              .filter((c) => c.identificador && !c.arquivado && t.campos[c.id]?.trim())
+              .sort(
+                (a, b) =>
+                  (ctx.etapas.find((e) => e.id === a.etapa_id)?.posicao ?? 0) -
+                    (ctx.etapas.find((e) => e.id === b.etapa_id)?.posicao ?? 0) ||
+                  a.posicao - b.posicao,
+              )
+              .map((c) => ({ nome: siglaIdentificador(c), valor: t.campos[c.id].trim() })),
+            ...campos
+              .filter((c) => !c.identificador && !c.usa_como_fase && t.campos[c.id]?.trim())
+              .map((c) => ({ nome: c.nome, valor: formatarValorCampo(c, t.campos[c.id]) })),
+          ],
           observacao: (t.observacao ?? "").trim(),
         };
       });
@@ -164,19 +175,23 @@ function criteriosTexto(criterios: CriterioFiltro[]): string {
   return criterios.map((c) => `${c.rotulo}: ${c.valor}`).join("; ");
 }
 
-function indicadoresLista(i: IndicadoresRelatorio): { rotulo: string; valor: number }[] {
-  return [
-    { rotulo: "Total de tarefas", valor: i.total },
-    { rotulo: "Em andamento", valor: i.emAndamento },
-    { rotulo: "Concluídas", valor: i.concluidas },
-    { rotulo: "Em atenção", valor: i.emAtencao },
-    { rotulo: "Travadas", valor: i.travadas },
-  ];
+function textoDesde(iso: string, dias: number): string {
+  const d = new Date(iso);
+  const data = Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR");
+  const tempo = dias === 0 ? "hoje" : `${dias} ${dias === 1 ? "dia" : "dias"}`;
+  return data ? `${data} · ${tempo}` : tempo;
+}
+
+function corSituacao(rotulo: string): [number, number, number] | null {
+  if (rotulo === "Em dia") return [22, 101, 52];
+  if (rotulo === "Atenção") return [146, 64, 14];
+  if (rotulo === "Travada") return [153, 27, 27];
+  return null;
 }
 
 function nomeArquivo(ext: string, d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
-  return `andamento-tarefas-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.${ext}`;
+  return `Acompanhamento de pauta ${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}.${ext}`;
 }
 
 function baixar(blob: Blob, nome: string) {
@@ -199,12 +214,7 @@ export function relatorioTexto(r: Relatorio): string {
   if (setor) out.push(setor);
   out.push(`*${TITULO}*`, `Emitido em ${emissao(r.emitidoEm)}`);
   if (r.criterios.length) out.push(`_Critérios: ${criteriosTexto(r.criterios)}_`);
-  out.push(
-    indicadoresLista(r.indicadores)
-      .map((x) => `${x.rotulo}: ${x.valor}`)
-      .join(" · "),
-    "",
-  );
+  out.push("");
   for (const g of r.grupos) {
     if (g.linhas.length === 0) continue;
     out.push(`*${g.indice}. ${g.etapa.nome}* (${g.linhas.length})`);
@@ -325,26 +335,6 @@ async function gerarPdf(r: Relatorio) {
     y += linhas.length * 11 + 8;
   }
 
-  /* Indicadores */
-  const ind = indicadoresLista(r.indicadores);
-  const gap = 10;
-  const caixa = (util - gap * (ind.length - 1)) / ind.length;
-  ind.forEach((it, i) => {
-    const cx = margem + i * (caixa + gap);
-    doc.setDrawColor(...CINZA_LINHA);
-    doc.setLineWidth(0.75);
-    doc.roundedRect(cx, y, caixa, 42, 4, 4, "S");
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...CINZA_SECUNDARIO);
-    doc.text(it.rotulo, cx + 10, y + 15);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...CINZA_TEXTO);
-    doc.text(String(it.valor), cx + 10, y + 33);
-  });
-  y += 42 + 22;
-
   const estiloTabela = {
     theme: "grid" as const,
     margin: { left: margem, right: margem, top: topoCorrido, bottom: rodape + 6 },
@@ -362,31 +352,6 @@ async function gerarPdf(r: Relatorio) {
     },
     headStyles: { fillColor: CINZA_FUNDO, textColor: [17, 24, 39] as [number, number, number], fontStyle: "bold" as const },
   };
-
-  /* Resumo por etapa */
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...CINZA_TEXTO);
-  doc.text("Resumo por etapa", margem, y);
-  autoTable(doc, {
-    ...estiloTabela,
-    startY: y + 8,
-    tableWidth: Math.min(util, 520),
-    head: [["Etapa", "Tarefas", "Em dia", "Atenção", "Travadas"]],
-    body: r.grupos.map((g) => [
-      `${g.indice}. ${g.etapa.nome}${g.etapa.finaliza ? " (conclusão)" : ""}`,
-      String(g.linhas.length),
-      String(g.resumo.ok),
-      String(g.resumo.atencao),
-      String(g.resumo.travada),
-    ]),
-    columnStyles: {
-      1: { halign: "right", cellWidth: 56 },
-      2: { halign: "right", cellWidth: 56 },
-      3: { halign: "right", cellWidth: 56 },
-      4: { halign: "right", cellWidth: 56 },
-    },
-  });
 
   /* Tabelas por etapa */
   const ultimoY = () =>
@@ -411,44 +376,40 @@ async function gerarPdf(r: Relatorio) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...CINZA_SECUNDARIO);
-    doc.text(
-      `${g.linhas.length} ${g.linhas.length === 1 ? "tarefa" : "tarefas"}`,
-      margem + 14 + larguraTitulo + 8,
-      gy,
-    );
+    doc.text(`(${g.linhas.length})`, margem + 14 + larguraTitulo + 8, gy);
 
     autoTable(doc, {
       ...estiloTabela,
       startY: gy + 8,
       head: [
-        ["Item", "Título", "Processo", "Situação", "Modalidade", "Tipo", "Secretaria", "Responsável", "Criada em"],
+        ["Item", "Título", "Processo", "Situação", "Desde", "Modalidade", "Tipo", "Secretaria", "Responsável"],
       ],
-      body: g.linhas.map((l) => {
-        const complemento = [l.fase && `Fase: ${l.fase}`, ...l.extras.map((x) => `${x.nome}: ${x.valor}`)]
-          .filter(Boolean)
-          .join(" | ");
-        return [
-          String(l.item),
-          complemento ? `${l.titulo}\n${complemento}` : l.titulo,
-          l.processo || "—",
-          l.situacao,
-          l.modalidade || "—",
-          l.tipo || "—",
-          l.secretarias,
-          l.responsavel || "—",
-          l.criada,
-        ];
-      }),
+      body: g.linhas.map((l) => [
+        String(l.item),
+        l.titulo,
+        l.processo || "—",
+        l.situacao,
+        l.criada,
+        l.modalidade || "—",
+        l.tipo || "—",
+        l.secretarias,
+        l.responsavel || "—",
+      ]),
+      didParseCell: (data) => {
+        if (data.section !== "body" || data.column.index !== 3) return;
+        const cor = corSituacao(String(data.cell.raw ?? ""));
+        if (cor) data.cell.styles.textColor = cor;
+      },
       columnStyles: {
         0: { halign: "right", cellWidth: 30 },
         1: { cellWidth: "auto" },
         2: { cellWidth: 78 },
-        3: { cellWidth: 54 },
-        4: { cellWidth: 82 },
-        5: { cellWidth: 66 },
-        6: { cellWidth: 84 },
-        7: { cellWidth: 92 },
-        8: { cellWidth: 54 },
+        3: { cellWidth: 58 },
+        4: { cellWidth: 88 },
+        5: { cellWidth: 78 },
+        6: { cellWidth: 62 },
+        7: { cellWidth: 90 },
+        8: { cellWidth: 88 },
       },
     });
   }
@@ -535,15 +496,12 @@ export async function exportarRelatorioExcel(r: Relatorio): Promise<void> {
     { header: "Item", width: 7 },
     { header: "Título", width: 48 },
     { header: "Processo", width: 18 },
-    { header: "Situação", width: 12 },
+    { header: "Situação", width: 14 },
+    { header: "Desde", width: 24 },
     { header: "Modalidade", width: 20 },
     { header: "Tipo", width: 16 },
-    { header: "Secretaria", width: 22 },
+    { header: "Secretaria", width: 36 },
     { header: "Responsável", width: 22 },
-    { header: "Criada em", width: 12 },
-    { header: "Dias na etapa", width: 13 },
-    { header: "Fase", width: 18 },
-    { header: "Campos da etapa", width: 40 },
     { header: "Observações", width: 50 },
   ];
   cols.forEach((c, i) => {
@@ -568,19 +526,13 @@ export async function exportarRelatorioExcel(r: Relatorio): Promise<void> {
   if (r.criterios.length) {
     cabecalho(`Critérios aplicados: ${criteriosTexto(r.criterios)}`, { size: 10 });
   }
-  cabecalho(
-    indicadoresLista(r.indicadores)
-      .map((x) => `${x.rotulo}: ${x.valor}`)
-      .join("   ·   "),
-    { size: 10, bold: true },
-  );
   linha++;
 
   for (const g of r.grupos) {
     if (g.linhas.length === 0) continue;
     ws.mergeCells(linha, 1, linha, cols.length);
     const titulo = ws.getCell(linha, 1);
-    titulo.value = `${g.indice}. ${g.etapa.nome} — ${g.linhas.length} ${g.linhas.length === 1 ? "tarefa" : "tarefas"}`;
+    titulo.value = `${g.indice}. ${g.etapa.nome} (${g.linhas.length})`;
     titulo.font = { bold: true, size: 11 };
     titulo.border = { bottom: { style: "medium", color: { argb: "FF9CA3AF" } } };
     ws.getRow(linha).height = 20;
@@ -604,22 +556,22 @@ export async function exportarRelatorioExcel(r: Relatorio): Promise<void> {
         l.titulo,
         l.processo,
         l.situacao,
+        l.criada,
         l.modalidade,
         l.tipo,
         l.secretarias,
         l.responsavel,
-        l.criada,
-        l.dias,
-        l.fase,
-        l.extras.map((x) => `${x.nome}: ${x.valor}`).join(" | "),
         l.observacao,
       ];
+      const cor = corSituacao(l.situacao);
       valores.forEach((v, i) => {
         const cell = row.getCell(i + 1);
-        // Strings são gravadas como texto (shared strings), nunca como fórmula.
         cell.value = v;
         cell.alignment = { vertical: "top", wrapText: true };
         cell.border = { top: borda, bottom: borda, left: borda, right: borda };
+        if (i === 3 && cor) {
+          cell.font = { color: { argb: `FF${cor.map((n) => n.toString(16).padStart(2, "0")).join("")}` }, bold: true };
+        }
       });
       linha++;
     }

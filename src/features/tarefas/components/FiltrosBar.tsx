@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Building2,
+  Check,
+  ChevronsUpDown,
   Gavel,
   Search,
   Tag,
@@ -9,14 +11,8 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   FILTROS_VAZIOS,
@@ -26,37 +22,29 @@ import {
   type MembroEquipe,
   type Situacao,
 } from "../lib";
-import {
-  SituacaoOpcao,
-  TkButton,
-  TkTooltip,
-  tkInput,
-  tkMenu,
-  tkMenuItem,
-  tkMenuSeparator,
-  tkSelect,
-} from "./ui";
+import { SituacaoOpcao, TkButton, TkTooltip, tkInput } from "./ui";
 
-const TODOS = "__todos__";
-
-type Opcao = { value: string; label: string; curto?: string };
+type Opcao = { value: string; label: string };
 
 type Props = {
   filtros: FiltrosTarefas;
   onChange: (f: FiltrosTarefas) => void;
-  /** Critérios ativos com rótulos legíveis (exibidos como chips). */
   criterios: CriterioFiltro[];
-  /** Quantidade exibida após os filtros e total do quadro. */
   resultado: { exibidas: number; total: number };
   modalidades: string[];
   tipos: string[];
-  secretarias: { id: string; sigla: string; label: string }[];
+  secretarias: { id: string; label: string }[];
   equipe: MembroEquipe[];
+  lista: boolean;
+  onLista: (lista: boolean) => void;
 };
 
-function FiltroSelect({
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function FiltroMulti({
   rotulo,
-  todos,
   icon: Icon,
   valor,
   onChange,
@@ -64,57 +52,118 @@ function FiltroSelect({
   renderOpcao,
 }: {
   rotulo: string;
-  /** Texto da opção que remove o filtro (ex.: "Todas as modalidades"). */
-  todos: string;
   icon: LucideIcon;
-  valor: string;
-  onChange: (v: string) => void;
+  valor: string[];
+  onChange: (v: string[]) => void;
   opcoes: Opcao[];
   renderOpcao?: (o: Opcao) => React.ReactNode;
 }) {
-  const atual = valor ? opcoes.find((o) => o.value === valor) : undefined;
-  const ativo = Boolean(valor);
-  const texto = ativo ? (atual?.curto ?? atual?.label ?? valor) : rotulo;
-  const dica = ativo ? `${rotulo}: ${atual?.label ?? valor}` : `Filtrar por ${rotulo.toLowerCase()}`;
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const ativo = valor.length > 0;
+  const visiveis = useMemo(() => {
+    const q = semAcento(busca.trim());
+    if (!q) return opcoes;
+    return opcoes.filter((o) => semAcento(o.label).includes(q));
+  }, [busca, opcoes]);
+  const texto =
+    valor.length === 0
+      ? rotulo
+      : valor.length === 1
+        ? (opcoes.find((o) => o.value === valor[0])?.label ?? rotulo)
+        : `${rotulo} (${valor.length})`;
+
+  function alternar(id: string) {
+    onChange(valor.includes(id) ? valor.filter((v) => v !== id) : [...valor, id]);
+  }
 
   return (
-    <Select value={valor || TODOS} onValueChange={(v) => onChange(v === TODOS ? "" : v)}>
-      <TkTooltip label={dica}>
-        <SelectTrigger
-          aria-label={dica}
-          className={cn(
-            tkSelect,
-            "@min-[68rem]:w-auto @min-[68rem]:max-w-[220px] @min-[68rem]:flex-[1_1_auto]",
-            ativo &&
-              "border-(--tk-accent)/60 bg-(--tk-accent-soft) dark:border-(--tk-accent)/60 dark:bg-(--tk-accent-soft)",
-          )}
-        >
-          <Icon
-            className={cn("size-4 shrink-0", ativo ? "text-(--tk-accent)" : "text-(--tk-text-3)")}
-            aria-hidden
-          />
-          <SelectValue
+    <Popover
+      open={aberto}
+      onOpenChange={(o) => {
+        setAberto(o);
+        if (!o) setBusca("");
+      }}
+    >
+      <TkTooltip label={ativo ? `${rotulo}: ${texto}` : `Filtrar por ${rotulo.toLowerCase()}`}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Filtrar por ${rotulo.toLowerCase()}`}
             className={cn(
-              "flex-1 text-left",
-              ativo ? "font-medium text-(--tk-text)" : "text-(--tk-text-2)",
+              "inline-flex h-11 min-w-0 cursor-pointer items-center gap-2 rounded-(--tk-radius-control) border border-(--tk-border-strong) bg-(--tk-input) px-3 text-left text-[14px] text-(--tk-text)",
+              "@min-[68rem]:w-auto @min-[68rem]:max-w-[220px] @min-[68rem]:flex-[1_1_auto]",
+              ativo && "border-(--tk-accent)/60 bg-(--tk-accent-soft)",
             )}
           >
-            {texto}
-          </SelectValue>
-        </SelectTrigger>
+            <Icon
+              className={cn("size-4 shrink-0", ativo ? "text-(--tk-accent)" : "text-(--tk-text-3)")}
+              aria-hidden
+            />
+            <span className={cn("min-w-0 flex-1 truncate", ativo ? "font-medium" : "text-(--tk-text-2)")}>
+              {texto}
+            </span>
+            <ChevronsUpDown className="size-4 shrink-0 text-(--tk-text-3)" aria-hidden />
+          </button>
+        </PopoverTrigger>
       </TkTooltip>
-      <SelectContent className={cn(tkMenu, "max-h-80 min-w-[240px]")}>
-        <SelectItem value={TODOS} className={tkMenuItem}>
-          {todos}
-        </SelectItem>
-        {opcoes.length > 0 && <SelectSeparator className={tkMenuSeparator} />}
-        {opcoes.map((o) => (
-          <SelectItem key={o.value} value={o.value} className={tkMenuItem}>
-            {renderOpcao ? renderOpcao(o) : o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      <PopoverContent
+        align="start"
+        className="w-[min(100vw-2rem,280px)] border-(--tk-border-strong) bg-(--tk-panel) p-2 text-(--tk-text)"
+      >
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-(--tk-text-3)" aria-hidden />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={`Buscar ${rotulo.toLowerCase()}`}
+            aria-label={`Buscar ${rotulo.toLowerCase()}`}
+            className={cn(tkInput, "h-9 pl-8")}
+          />
+        </div>
+        <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto" role="listbox" aria-multiselectable="true">
+          {visiveis.length === 0 ? (
+            <li className="px-2 py-3 text-center text-[13px] text-(--tk-text-2)">Nenhum resultado</li>
+          ) : (
+            visiveis.map((o) => {
+              const marcado = valor.includes(o.value);
+              return (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={marcado}
+                    onClick={() => alternar(o.value)}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[14px] hover:bg-(--tk-neutral-bg)"
+                  >
+                    <span
+                      className={cn(
+                        "grid size-4 shrink-0 place-items-center rounded border",
+                        marcado
+                          ? "border-(--tk-accent) bg-(--tk-accent) text-(--tk-accent-fg)"
+                          : "border-(--tk-border-strong)",
+                      )}
+                    >
+                      {marcado && <Check className="size-3" aria-hidden />}
+                    </span>
+                    <span className="min-w-0 truncate">{renderOpcao ? renderOpcao(o) : o.label}</span>
+                  </button>
+                </li>
+              );
+            })
+          )}
+        </ul>
+        {ativo && (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="mt-1 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-[13px] text-(--tk-text-2) hover:bg-(--tk-neutral-bg)"
+          >
+            Limpar {rotulo.toLowerCase()}
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -127,9 +176,9 @@ export function FiltrosBar({
   tipos,
   secretarias,
   equipe,
+  lista,
+  onLista,
 }: Props) {
-  // Busca com debounce: o input é local e só vai para a URL após uma pausa.
-  // O timer lê os filtros mais recentes para não restaurar critérios já limpos.
   const [q, setQ] = useState(filtros.q);
   const filtrosRef = useRef(filtros);
   useEffect(() => {
@@ -143,16 +192,16 @@ export function FiltrosBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
-  const set = (k: keyof FiltrosTarefas) => (v: string) => onChange({ ...filtros, [k]: v });
+  function setLista(chave: "modalidade" | "tipo" | "secretaria" | "responsavel" | "situacao") {
+    return (valor: string[]) => onChange({ ...filtros, [chave]: valor });
+  }
 
   return (
-    // Largura medida pelo próprio container (sidebar aberta ou recolhida):
-    // linha única a partir de 68rem; abaixo, busca em cima e filtros em grade.
     <div className="@container flex min-w-0 flex-col gap-3">
       <div
         className="flex min-w-0 flex-col gap-2 @min-[68rem]:flex-row @min-[68rem]:items-center"
         role="search"
-        aria-label="Filtros de tarefas"
+        aria-label="Filtros do acompanhamento"
       >
         <div className="relative w-full min-w-0 @min-[34rem]:max-w-[360px] @min-[68rem]:w-[358px] @min-[68rem]:shrink-0">
           <Search
@@ -169,14 +218,14 @@ export function FiltrosBar({
                 setQ("");
               }
             }}
-            placeholder="Buscar tarefa, número ou objeto do processo..."
+            placeholder="Buscar título, número ou objeto do processo..."
             className={cn(
               tkInput,
               "pl-10 [&::-webkit-search-cancel-button]:appearance-none",
               q ? "pr-10" : "pr-3",
             )}
             maxLength={80}
-            aria-label="Buscar tarefa, número ou objeto do processo"
+            aria-label="Buscar título, número ou objeto do processo"
           />
           {q && (
             <TkTooltip label="Limpar busca">
@@ -193,63 +242,61 @@ export function FiltrosBar({
         </div>
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 @min-[34rem]:grid-cols-3 @min-[54rem]:grid-cols-5 @min-[68rem]:flex">
-          <FiltroSelect
+          <FiltroMulti
             rotulo="Modalidade"
-            todos="Todas as modalidades"
             icon={Gavel}
             valor={filtros.modalidade}
-            onChange={set("modalidade")}
+            onChange={setLista("modalidade")}
             opcoes={modalidades.map((m) => ({ value: m, label: m }))}
           />
-          <FiltroSelect
+          <FiltroMulti
             rotulo="Tipo"
-            todos="Todos os tipos"
             icon={Tag}
             valor={filtros.tipo}
-            onChange={set("tipo")}
+            onChange={setLista("tipo")}
             opcoes={tipos.map((m) => ({ value: m, label: m }))}
           />
-          <FiltroSelect
+          <FiltroMulti
             rotulo="Secretaria"
-            todos="Todas as secretarias"
             icon={Building2}
             valor={filtros.secretaria}
-            onChange={set("secretaria")}
-            opcoes={secretarias.map((s) => ({ value: s.id, label: s.label, curto: s.sigla }))}
+            onChange={setLista("secretaria")}
+            opcoes={secretarias.map((s) => ({ value: s.id, label: s.label }))}
           />
-          <FiltroSelect
+          <FiltroMulti
             rotulo="Responsável"
-            todos="Todos os responsáveis"
             icon={UserRound}
             valor={filtros.responsavel}
-            onChange={set("responsavel")}
+            onChange={setLista("responsavel")}
             opcoes={[
               { value: "__nenhum__", label: "Sem responsável" },
               ...equipe.map((m) => ({ value: m.id, label: m.nome })),
             ]}
           />
-          <FiltroSelect
+          <FiltroMulti
             rotulo="Situação"
-            todos="Todas as situações"
             icon={Activity}
             valor={filtros.situacao}
-            onChange={set("situacao")}
+            onChange={setLista("situacao")}
             opcoes={SITUACOES.map((s) => ({ value: s.value, label: s.label }))}
             renderOpcao={(o) => <SituacaoOpcao situacao={o.value as Situacao} />}
           />
         </div>
+        <label className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-(--tk-radius-control) border border-(--tk-border-strong) bg-(--tk-card) px-3 text-[14px] text-(--tk-text)">
+          <span>Lista</span>
+          <Switch checked={lista} onCheckedChange={onLista} aria-label="Visualização em lista" />
+        </label>
       </div>
 
       {criterios.length > 0 && (
         <div className="flex min-w-0 flex-wrap items-center gap-2" aria-live="polite">
           <span className="text-[13px] text-(--tk-text-2)">
-            Exibindo {resultado.exibidas} de {resultado.total}{" "}
-            {resultado.total === 1 ? "tarefa" : "tarefas"}
+            Exibindo {resultado.exibidas} de {resultado.total}
           </span>
           <span className="h-4 w-px bg-(--tk-border-strong)" aria-hidden />
           {criterios.map((c) => (
             <span
-              key={c.chave}
+              key={`${c.chave}-${c.item ?? c.valor}`}
               className="inline-flex h-8 min-w-0 max-w-[280px] items-center gap-1 rounded-full border border-(--tk-border-strong) bg-(--tk-card) pl-3 pr-1 text-[13px]"
             >
               <span className="shrink-0 text-(--tk-text-2)">{c.rotulo}:</span>
@@ -259,10 +306,16 @@ export function FiltrosBar({
               <button
                 type="button"
                 onClick={() => {
-                  if (c.chave === "q") setQ("");
-                  onChange({ ...filtros, [c.chave]: "" });
+                  if (c.chave === "q") {
+                    setQ("");
+                    onChange({ ...filtros, q: "" });
+                    return;
+                  }
+                  const atual = filtros[c.chave];
+                  if (!Array.isArray(atual) || !c.item) return;
+                  onChange({ ...filtros, [c.chave]: atual.filter((v) => v !== c.item) });
                 }}
-                aria-label={`Remover filtro ${c.rotulo}`}
+                aria-label={`Remover filtro ${c.rotulo} ${c.valor}`}
                 className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-full text-(--tk-text-3) hover:bg-(--tk-neutral-bg) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
               >
                 <X className="size-3.5" />

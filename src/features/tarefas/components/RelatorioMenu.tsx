@@ -42,7 +42,7 @@ export function RelatorioMenu({ contexto, desabilitado }: Props) {
   async function executar(tipo: Formato) {
     const relatorio = montarRelatorio(contexto);
     if (relatorioVazio(relatorio)) {
-      notify.info("Nenhuma tarefa para o relatório com os filtros atuais");
+      notify.info("Nada para exportar com os filtros atuais");
       return;
     }
     try {
@@ -71,13 +71,13 @@ export function RelatorioMenu({ contexto, desabilitado }: Props) {
       <DropdownMenuTrigger asChild>
         <TkButton variant="secondary" disabled={desabilitado || gerando !== null}>
           {gerando ? <Loader2 className="animate-spin" /> : <FileBarChart />}
-          {gerando ? "Gerando..." : "Relatório"}
+          {gerando ? "Gerando..." : "Exportar"}
           <ChevronDown className="text-(--tk-text-3)" />
         </TkButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className={cn(tkMenu, "w-80")}>
         <DropdownMenuLabel className={tkMenuLabel}>
-          {filtrado ? "Considera os filtros aplicados no quadro" : "Considera todas as tarefas do quadro"}
+          {filtrado ? "Considera os filtros aplicados" : "Considera o quadro inteiro"}
         </DropdownMenuLabel>
         <DropdownMenuSeparator className={tkMenuSeparator} />
         <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("imprimir")}>
@@ -91,7 +91,7 @@ export function RelatorioMenu({ contexto, desabilitado }: Props) {
         </DropdownMenuItem>
         <DropdownMenuSeparator className={tkMenuSeparator} />
         <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("texto")}>
-          <ClipboardCopy /> Copiar resumo em texto (WhatsApp)
+          <ClipboardCopy /> Copiar texto (WhatsApp)
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

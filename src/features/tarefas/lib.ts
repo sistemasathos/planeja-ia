@@ -78,6 +78,42 @@ export const CORES_SUGERIDAS = [
 
 /* ------------------------------ Normalizadores ------------------------------ */
 
+/** Rótulo curto da etiqueta (DFD, ETP). Cai no nome quando não há sigla. */
+export function siglaIdentificador(c: Pick<Campo, "nome" | "sigla">): string {
+  const sigla = (c.sigla ?? "").trim();
+  if (sigla) return sigla.toLocaleUpperCase("pt-BR");
+  return c.nome.replace(/^n[uú]mero\s+d[eoa]s?\s+/i, "").trim() || c.nome;
+}
+
+export function identificadoresDaEtapa(campos: Campo[], etapaId: string): Campo[] {
+  return campos
+    .filter((c) => c.etapa_id === etapaId && c.identificador && !c.arquivado)
+    .sort((a, b) => a.posicao - b.posicao);
+}
+
+/** Identificadores da etapa ainda sem valor. Etapa sem esses campos devolve lista vazia. */
+export function identificadoresPendentes(
+  campos: Campo[],
+  etapaId: string,
+  valores: Record<string, string>,
+): Campo[] {
+  return identificadoresDaEtapa(campos, etapaId).filter((c) => !(valores[c.id] ?? "").trim());
+}
+
+/** Junta os números informados no avanço ao mapa já salvo da tarefa. Vazio remove a chave. */
+export function mesclarIdentificadores(
+  base: Record<string, string>,
+  form: Record<string, string>,
+): Record<string, string> {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(form)) {
+    const texto = v.trim().slice(0, 80);
+    if (texto) out[k] = texto;
+    else delete out[k];
+  }
+  return out;
+}
+
 export function normalizarCampo(row: CampoRow): Campo {
   const opcoes = Array.isArray(row.opcoes)
     ? (row.opcoes as Json[]).filter((o): o is string => typeof o === "string")
@@ -176,6 +212,78 @@ export function diasDesde(iso: string, agora = Date.now()): number {
   return Math.max(0, Math.floor((agora - t) / 86_400_000));
 }
 
+export type DocumentoChave = "dfd" | "pesquisa" | "etp" | "certame";
+export type RegraTramitacao = "pesquisa" | "etp" | "publicacao" | "julgamento" | "contratacao";
+
+export const DOCUMENTOS_FIXOS: { chave: DocumentoChave; titulo: string; horario: boolean }[] = [
+  { chave: "dfd", titulo: "DFD", horario: false },
+  { chave: "pesquisa", titulo: "Pesquisa", horario: false },
+  { chave: "etp", titulo: "ETP", horario: false },
+  { chave: "certame", titulo: "Certame", horario: true },
+];
+
+export const FASES_JULGAMENTO: { chave: string; nome: string }[] = [
+  { chave: "analise", nome: "Análise de propostas" },
+  { chave: "exequibilidade", nome: "Exequibilidade" },
+  { chave: "habilitacao", nome: "Habilitação" },
+  { chave: "recursal", nome: "Fase recursal" },
+  { chave: "adjudicacao", nome: "Adjudicação / Homologação" },
+  { chave: "convocacao", nome: "Convocação" },
+];
+
+export type FaseSituacao = "pendente" | "em_andamento" | "concluida";
+
+export const FASE_SITUACOES: { value: FaseSituacao; label: string }[] = [
+  { value: "pendente", label: "Pendente" },
+  { value: "em_andamento", label: "Em andamento" },
+  { value: "concluida", label: "Concluída" },
+];
+
+/** Etapa de destino → dados pedidos no avanço. Etapa fora do fluxo não pede nada aqui. */
+export function regraTramitacao(nomeEtapa: string): RegraTramitacao | null {
+  const n = nomeEtapa
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (n.includes("pesquisa") || n.includes("cotac")) return "pesquisa";
+  if (n.startsWith("etp") || n.includes("estudo tecnico")) return "etp";
+  if (n.includes("public")) return "publicacao";
+  if (n.includes("julg")) return "julgamento";
+  if (n.includes("contrat")) return "contratacao";
+  return null;
+}
+
+export type DocumentoResumo = {
+  chave: string | null;
+  titulo: string;
+  numero: string | null;
+  data: string | null;
+  horario: string | null;
+};
+
+/** Ainda falta número ou data obrigatórios. Publicação, julgamento e contratação não bloqueiam. */
+export function tramitacaoPendente(
+  regra: RegraTramitacao,
+  docs: DocumentoResumo[],
+): boolean {
+  const doc = docs.find((d) => d.chave === (regra === "publicacao" ? "certame" : regra));
+  if (regra === "pesquisa" || regra === "etp") {
+    return !doc?.numero?.trim() || !doc?.data;
+  }
+  if (regra === "publicacao") {
+    return !doc?.numero?.trim() || !doc?.data || !doc?.horario;
+  }
+  return true;
+}
+
+/** Data `yyyy-mm-dd` em dd/mm/aaaa, sem deslocar o fuso. */
+export function formatarDia(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const m = iso.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return formatarData(iso);
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 export function formatarData(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -212,28 +320,41 @@ function semAcento(s: string): string {
 
 export type FiltrosTarefas = {
   q: string;
-  modalidade: string;
-  tipo: string;
-  secretaria: string;
-  responsavel: string;
-  situacao: string;
+  modalidade: string[];
+  tipo: string[];
+  secretaria: string[];
+  responsavel: string[];
+  situacao: string[];
 };
 
 export const FILTROS_VAZIOS: FiltrosTarefas = {
   q: "",
-  modalidade: "",
-  tipo: "",
-  secretaria: "",
-  responsavel: "",
-  situacao: "",
+  modalidade: [],
+  tipo: [],
+  secretaria: [],
+  responsavel: [],
+  situacao: [],
 };
 
 export function filtrosAtivos(f: FiltrosTarefas): number {
-  return Object.values(f).filter((v) => v.trim() !== "").length;
+  return (
+    (f.q.trim() ? 1 : 0) +
+    f.modalidade.length +
+    f.tipo.length +
+    f.secretaria.length +
+    f.responsavel.length +
+    f.situacao.length
+  );
 }
 
 /** Critério de filtro aplicado, já com rótulo legível (chips e relatório). */
-export type CriterioFiltro = { chave: keyof FiltrosTarefas; rotulo: string; valor: string };
+export type CriterioFiltro = {
+  chave: keyof FiltrosTarefas;
+  rotulo: string;
+  valor: string;
+  /** Valor a remover quando o chip é de uma lista. */
+  item?: string;
+};
 
 /**
  * @param processoTexto processo_id → texto pesquisável (nº e objeto do processo)
@@ -242,19 +363,21 @@ export function filtrarTarefas(
   tarefas: Tarefa[],
   f: FiltrosTarefas,
   processoTexto: Map<string, string>,
+  gruposSecretaria?: Map<string, string[]>,
 ): Tarefa[] {
   const q = semAcento(f.q.trim());
   return tarefas.filter((t) => {
-    if (f.modalidade && t.modalidade !== f.modalidade) return false;
-    if (f.tipo && t.tipo !== f.tipo) return false;
-    if (f.situacao && t.situacao !== f.situacao) return false;
-    if (f.responsavel === "__nenhum__") {
-      if (t.responsavel_id) return false;
-    } else if (f.responsavel && t.responsavel_id !== f.responsavel) {
-      return false;
+    if (f.modalidade.length && !f.modalidade.includes(t.modalidade ?? "")) return false;
+    if (f.tipo.length && !f.tipo.includes(t.tipo ?? "")) return false;
+    if (f.situacao.length && !f.situacao.includes(t.situacao)) return false;
+    if (f.responsavel.length) {
+      const sem = f.responsavel.includes("__nenhum__") && !t.responsavel_id;
+      const marcado = Boolean(t.responsavel_id && f.responsavel.includes(t.responsavel_id));
+      if (!sem && !marcado) return false;
     }
-    if (f.secretaria) {
-      if (!t.todas_secretarias && !t.secretaria_ids.includes(f.secretaria)) {
+    if (f.secretaria.length) {
+      const ids = f.secretaria.flatMap((id) => gruposSecretaria?.get(id) ?? [id]);
+      if (!t.todas_secretarias && !t.secretaria_ids.some((id) => ids.includes(id))) {
         return false;
       }
     }

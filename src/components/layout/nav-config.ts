@@ -74,6 +74,7 @@ export const APP_NAV: NavEntry[] = [
     icon: Settings,
     items: [
       { to: "/perfil", label: "Meu perfil", icon: UserCircle },
+      { to: "/configuracoes", label: "Configurações", icon: Settings },
       { to: "/logs", label: "Auditoria", icon: ScrollText, adminOnly: true },
     ],
   },

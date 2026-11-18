@@ -51,6 +51,9 @@ const DEFAULT_RESTORE_ORDER = [
   "tarefas",
   "tarefa_secretarias",
   "tarefa_anexos",
+  "tarefa_documentos",
+  "tarefa_fases",
+  "tarefa_contratos",
   "tarefa_eventos",
 ];
 
@@ -61,6 +64,8 @@ const UPSERT_ON_CONFLICT = {
   user_roles: "user_id,role",
   profile_secretarias: "user_id,secretaria_id",
   tarefa_secretarias: "tarefa_id,secretaria_id",
+  tarefa_fases: "tarefa_id,chave",
+  tarefa_contratos: "tarefa_id,contrato_id",
   /** PK estável no backup; upsert em m2a_id trocava id_local e quebrava FK em m2a_servidor_unidade. */
   m2a_unidades_gestoras: "id_local",
   m2a_servidores: "id_local",

@@ -25,7 +25,7 @@ import { SITUACOES, type Situacao } from "../lib";
 /* --------------------------------- Botões ---------------------------------- */
 
 export const tkButton = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-(--tk-radius-control) font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-(--tk-radius-control) font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -128,7 +128,7 @@ export const tkMenuItem =
 export const tkMenuItemDanger =
   "text-(--tk-danger) focus:bg-(--tk-danger-bg) focus:text-(--tk-danger) dark:focus:bg-(--tk-danger-bg) dark:focus:text-(--tk-danger) [&>svg]:text-(--tk-danger)";
 export const tkMenuLabel =
-  "px-2.5 pb-1 pt-1.5 text-[12px] font-semibold normal-case tracking-normal text-(--tk-text-3)";
+  "px-2.5 pb-1 pt-1.5 text-[12px] font-medium normal-case tracking-normal text-(--tk-text-3)";
 export const tkMenuSeparator = "-mx-1.5 my-1.5 bg-(--tk-border)";
 
 export function TkField({
@@ -152,7 +152,7 @@ export function TkField({
       <div className="flex min-h-6 min-w-0 items-center justify-between gap-3">
         <label
           htmlFor={htmlFor}
-          className="truncate text-[13px] font-semibold text-(--tk-text-2)"
+          className="truncate text-[13px] font-medium text-(--tk-text-2)"
         >
           {label}
         </label>
@@ -240,11 +240,20 @@ export function SituacaoOpcao({ situacao }: { situacao: Situacao }) {
   );
 }
 
-export function TkCount({ children, label }: { children: React.ReactNode; label?: string }) {
+export function TkCount({
+  children,
+  label,
+  style,
+}: {
+  children: React.ReactNode;
+  label?: string;
+  style?: React.CSSProperties;
+}) {
   return (
     <span
       aria-label={label}
-      className="inline-flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full bg-(--tk-neutral-bg) px-2 text-[12px] font-semibold tabular-nums text-(--tk-text-2)"
+      style={style}
+      className="inline-flex h-6 min-w-7 shrink-0 items-center justify-center rounded-full bg-(--tk-neutral-bg) px-2 text-[12px] font-medium tabular-nums text-(--tk-text)"
     >
       {children}
     </span>

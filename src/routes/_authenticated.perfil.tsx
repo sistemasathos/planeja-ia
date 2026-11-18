@@ -39,6 +39,7 @@ import {
   useSecretariasOpcoes,
 } from "@/features/perfil/hooks";
 import {
+  idsPrincipais,
   iniciais,
   maskTelefone,
   perfilSchema,
@@ -79,15 +80,19 @@ function Page() {
 
   useEffect(() => {
     if (!perfil) return;
+    const secretarias = idsPrincipais(perfil.secretarias, opcoes);
+    const principal = perfil.principal
+      ? (idsPrincipais([perfil.principal], opcoes)[0] ?? null)
+      : null;
     form.reset({
       nome: perfil.nome,
       telefone: perfil.telefone ?? "",
       cargo: perfil.cargo ?? "",
       endereco: perfil.endereco ?? "",
-      secretarias: perfil.secretarias,
-      principal: perfil.principal,
+      secretarias,
+      principal: principal && secretarias.includes(principal) ? principal : null,
     });
-  }, [perfil, form]);
+  }, [perfil, form, opcoes]);
 
   const secretariasSel = form.watch("secretarias");
   const principal = form.watch("principal");
@@ -100,10 +105,19 @@ function Page() {
   }, [secretariasSel, principal, form]);
 
   async function onSubmit(v: PerfilFormValues) {
+    const secretarias = idsPrincipais(v.secretarias, opcoes);
+    const principal = v.principal
+      ? (idsPrincipais([v.principal], opcoes)[0] ?? null)
+      : null;
+    const salvo: PerfilFormValues = {
+      ...v,
+      secretarias,
+      principal: principal && secretarias.includes(principal) ? principal : null,
+    };
     try {
-      await salvar.mutateAsync(v);
+      await salvar.mutateAsync(salvo);
       notify.success("Perfil atualizado");
-      form.reset(v);
+      form.reset(salvo);
     } catch (e) {
       notify.error("Não foi possível salvar o perfil", {
         description: e instanceof Error ? e.message : undefined,

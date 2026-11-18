@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   Copy,
@@ -22,6 +24,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { SecretariasMultiSelect } from "@/components/layout/SecretariasMultiSelect";
+import { idsPrincipais } from "@/features/perfil/lib";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -29,15 +32,23 @@ import {
   abrirAnexo,
   useAnexos,
   useAtualizarTarefa,
+  useDocumentos,
   useEnviarAnexo,
   useEventos,
   useExcluirTarefa,
+  registrarDocumentoTramitacao,
+  TAREFAS_KEYS,
   useRemoverAnexo,
 } from "../hooks";
 import {
   MAX_ANEXO_BYTES,
   SITUACOES,
-  formatarData,
+  formatarDia,
+  identificadoresDaEtapa,
+  identificadoresPendentes,
+  mesclarIdentificadores,
+  regraTramitacao,
+  tramitacaoPendente,
   urlSegura,
   type Campo,
   type Etapa,
@@ -46,6 +57,9 @@ import {
   type Situacao,
   type Tarefa,
 } from "../lib";
+import { AvancoEtapaDialog } from "./AvancoEtapaDialog";
+import { FichaTramitacao } from "./FichaTramitacao";
+import { TramitacaoDialog, type ConfirmacaoTramitacao } from "./TramitacaoDialog";
 import { ProcessoPicker } from "./ProcessoPicker";
 import {
   SituacaoOpcao,
@@ -78,22 +92,24 @@ type Draft = {
   situacao: string;
   observacao: string;
   campos: Record<string, string>;
+  data_inclusao: string;
 };
 
-function draftDe(t: Tarefa): Draft {
+function draftDe(t: Tarefa, opcoes: { id: string; ids?: string[] }[]): Draft {
   return {
     titulo: t.titulo,
     etapa_id: t.etapa_id,
     tipo: t.tipo ?? "",
     modalidade: t.modalidade ?? "",
     todas_secretarias: t.todas_secretarias,
-    secretaria_ids: [...t.secretaria_ids].sort(),
+    secretaria_ids: idsPrincipais(t.secretaria_ids, opcoes).sort(),
     processo_id: t.processo_id,
     link_url: t.link_url ?? "",
     responsavel_id: t.responsavel_id,
     situacao: t.situacao,
     observacao: t.observacao ?? "",
     campos: { ...t.campos },
+    data_inclusao: t.data_inclusao?.slice(0, 10) ?? "",
   };
 }
 
@@ -121,7 +137,7 @@ type Props = {
   etapas: Etapa[];
   campos: Campo[];
   equipe: MembroEquipe[];
-  secretarias: { id: string; label: string }[];
+  secretarias: { id: string; ids?: string[]; label: string }[];
   modalidades: string[];
   tipos: string[];
   podeEditar: boolean;
@@ -141,8 +157,13 @@ export function TarefaSheet({
 }: Props) {
   const atualizar = useAtualizarTarefa();
   const excluir = useExcluirTarefa();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { data: documentos = [] } = useDocumentos();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [avancoAberto, setAvancoAberto] = useState(false);
+  const [tramAberto, setTramAberto] = useState(false);
   const baseRef = useRef<{ id: string; updatedAt: string } | null>(null);
   const originalRef = useRef<Draft | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -161,8 +182,8 @@ export function TarefaSheet({
     const mudouNoServidor = baseRef.current?.updatedAt !== tarefa.updated_at;
     const sujo =
       draft && originalRef.current ? !iguais(draft, originalRef.current) : false;
-    if (mudouTarefa || (mudouNoServidor && !sujo)) {
-      const novo = draftDe(tarefa);
+    const novo = draftDe(tarefa, secretarias);
+    if (mudouTarefa || (mudouNoServidor && !sujo) || (!sujo && draft && !iguais(draft, novo))) {
       setDraft(novo);
       originalRef.current = novo;
       baseRef.current = { id: tarefa.id, updatedAt: tarefa.updated_at };
@@ -171,7 +192,7 @@ export function TarefaSheet({
       setExterno(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tarefa]);
+  }, [tarefa, secretarias]);
 
   const sujo = useMemo(
     () => (draft && originalRef.current ? !iguais(draft, originalRef.current) : false),
@@ -183,8 +204,12 @@ export function TarefaSheet({
     [etapas, draft?.etapa_id],
   );
   const camposAtivos = useMemo(() => campos.filter((c) => !c.arquivado), [campos]);
-  const camposDaEtapa = camposAtivos.filter((c) => c.etapa_id === draft?.etapa_id);
-  const camposOutras = camposAtivos.filter((c) => c.etapa_id !== draft?.etapa_id);
+  const camposDaEtapa = camposAtivos.filter(
+    (c) => c.etapa_id === draft?.etapa_id && !c.identificador,
+  );
+  const camposOutras = camposAtivos.filter(
+    (c) => c.etapa_id !== draft?.etapa_id && !c.identificador,
+  );
   const etapaAtual = etapas.find((e) => e.id === draft?.etapa_id);
 
   function set<K extends keyof Draft>(k: K, v: Draft[K]) {
@@ -196,15 +221,33 @@ export function TarefaSheet({
 
   function recarregar() {
     if (!tarefa) return;
-    const novo = draftDe(tarefa);
+    const novo = draftDe(tarefa, secretarias);
     setDraft(novo);
     originalRef.current = novo;
     baseRef.current = { id: tarefa.id, updatedAt: tarefa.updated_at };
     setExterno(false);
   }
 
-  async function salvar() {
+  async function salvar(opcoes?: { extras?: Record<string, string>; pularGate?: boolean }) {
     if (!tarefa || !draft || !baseRef.current) return;
+    const camposFonte = opcoes?.extras
+      ? mesclarIdentificadores(draft.campos, opcoes.extras)
+      : draft.campos;
+    if (!opcoes?.pularGate && draft.etapa_id !== tarefa.etapa_id) {
+      const destino = etapas.find((e) => e.id === draft.etapa_id);
+      const regra = destino ? regraTramitacao(destino.nome) : null;
+      if (regra && tramitacaoPendente(regra, documentos.filter((d) => d.tarefa_id === tarefa.id))) {
+        setTramAberto(true);
+        return;
+      }
+      if (
+        !regra &&
+        identificadoresPendentes(camposAtivos, draft.etapa_id, camposFonte).length > 0
+      ) {
+        setAvancoAberto(true);
+        return;
+      }
+    }
     const titulo = draft.titulo.trim();
     if (!titulo) {
       notify.error("Informe o título da tarefa");
@@ -219,7 +262,7 @@ export function TarefaSheet({
     }
     const valores: Record<string, string> = {};
     for (const c of camposAtivos) {
-      const v = (draft.campos[c.id] ?? "").trim();
+      const v = (camposFonte[c.id] ?? "").trim();
       if (!v) continue;
       if (c.tipo === "link" && !urlSegura(v)) {
         notify.error(`Link inválido em "${c.nome}"`, {
@@ -227,10 +270,10 @@ export function TarefaSheet({
         });
         return;
       }
-      valores[c.id] = v.slice(0, 1000);
+      valores[c.id] = v.slice(0, c.identificador ? 80 : 1000);
     }
     // Preserva valores de campos já arquivados.
-    for (const [k, v] of Object.entries(draft.campos)) {
+    for (const [k, v] of Object.entries(camposFonte)) {
       if (!(k in valores) && !camposAtivos.some((c) => c.id === k) && v.trim()) {
         valores[k] = v;
       }
@@ -239,7 +282,7 @@ export function TarefaSheet({
       const res = await atualizar.mutateAsync({
         id: tarefa.id,
         baseUpdatedAt: baseRef.current.updatedAt,
-        secretariaIds: draft.secretaria_ids,
+        secretariaIds: idsPrincipais(draft.secretaria_ids, secretarias),
         patch: {
           titulo,
           etapa_id: draft.etapa_id,
@@ -252,10 +295,12 @@ export function TarefaSheet({
           situacao: draft.situacao,
           observacao: draft.observacao.trim() || null,
           campos: valores,
+          ...(draft.data_inclusao ? { data_inclusao: draft.data_inclusao } : {}),
         },
       });
       baseRef.current = { id: tarefa.id, updatedAt: res.updated_at };
       const salvo = { ...draft, titulo, campos: valores };
+      setAvancoAberto(false);
       setDraft(salvo);
       originalRef.current = salvo;
       setExterno(false);
@@ -271,6 +316,27 @@ export function TarefaSheet({
           description: e instanceof Error ? e.message : undefined,
         });
       }
+    }
+  }
+
+  async function confirmarTram(valor: ConfirmacaoTramitacao) {
+    if (!tarefa || !draft) return;
+    const destino = etapas.find((e) => e.id === draft.etapa_id);
+    const regra = destino ? regraTramitacao(destino.nome) : null;
+    if (!regra) return;
+    try {
+      await registrarDocumentoTramitacao(tarefa.id, regra, valor, documentos);
+      await qc.invalidateQueries({ queryKey: TAREFAS_KEYS.documentos });
+    } catch (e) {
+      notify.error("Não foi possível registrar o documento", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      return;
+    }
+    setTramAberto(false);
+    await salvar({ pularGate: true });
+    if (valor.importar) {
+      void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } });
     }
   }
 
@@ -344,7 +410,9 @@ export function TarefaSheet({
             }
             description={
               <SheetDescription className="text-[13px] text-(--tk-text-2)">
-                {tarefa ? `Criada em ${formatarData(tarefa.created_at)}` : "Detalhes da tarefa"}
+                {tarefa
+                  ? `Criada em ${formatarDia(tarefa.data_inclusao) || formatarDia(tarefa.created_at)}`
+                  : "Detalhes da tarefa"}
                 {etapaAtual && ` · ${etapaAtual.nome}`}
                 {desabilitado && " · Somente leitura"}
               </SheetDescription>
@@ -370,6 +438,9 @@ export function TarefaSheet({
             )}
 
             <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+              <h3 className="text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
+                Identificação
+              </h3>
               <TkField label="Título" htmlFor="t-titulo" className="sm:col-span-2">
                 <input
                   id="t-titulo"
@@ -380,7 +451,91 @@ export function TarefaSheet({
                   className={tkInput}
                 />
               </TkField>
+              <TkField label="Data de inclusão" htmlFor="t-inclusao">
+                <input
+                  id="t-inclusao"
+                  type="date"
+                  value={draft.data_inclusao}
+                  disabled={desabilitado}
+                  onChange={(e) => set("data_inclusao", e.target.value)}
+                  className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+                />
+              </TkField>
 
+              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
+                Classificação
+              </h3>
+              <TkField label="Modalidade" htmlFor="t-modalidade">
+                <input
+                  id="t-modalidade"
+                  list="t-modalidades"
+                  value={draft.modalidade}
+                  maxLength={80}
+                  placeholder="Selecione ou digite"
+                  disabled={desabilitado}
+                  onChange={(e) => set("modalidade", e.target.value)}
+                  className={tkInput}
+                />
+                <datalist id="t-modalidades">
+                  {modalidades.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </TkField>
+              <TkField label="Tipo" htmlFor="t-tipo">
+                <input
+                  id="t-tipo"
+                  list="t-tipos"
+                  value={draft.tipo}
+                  maxLength={80}
+                  placeholder="Selecione ou digite"
+                  disabled={desabilitado}
+                  onChange={(e) => set("tipo", e.target.value)}
+                  className={tkInput}
+                />
+                <datalist id="t-tipos">
+                  {tipos.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </TkField>
+              <TkField
+                label="Secretarias"
+                htmlFor={draft.todas_secretarias ? undefined : "t-secretarias"}
+                className="sm:col-span-2"
+                action={
+                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] text-(--tk-text-2)">
+                    <Switch
+                      checked={draft.todas_secretarias}
+                      disabled={desabilitado}
+                      onCheckedChange={(v) => set("todas_secretarias", v)}
+                    />
+                    Todas as secretarias
+                  </label>
+                }
+              >
+                {draft.todas_secretarias ? (
+                  <p className="flex h-11 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
+                    A tarefa abrange todas as secretarias.
+                  </p>
+                ) : (
+                  <SecretariasMultiSelect
+                    id="t-secretarias"
+                    options={secretarias}
+                    value={draft.secretaria_ids}
+                    onChange={(v) => set("secretaria_ids", v)}
+                    disabled={desabilitado}
+                    placeholder="Selecionar secretarias"
+                    triggerClassName={cn(tkSelect, "h-auto min-h-11 py-1.5 hover:bg-(--tk-input) hover:text-(--tk-text)")}
+                    contentClassName={cn(tkMenu, "p-0")}
+                    itemClassName={tkMenuItem}
+                  />
+                )}
+              </TkField>
+
+              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
+                Acompanhamento
+              </h3>
               <TkField label="Etapa" htmlFor="t-etapa">
                 <Select
                   value={draft.etapa_id}
@@ -420,42 +575,6 @@ export function TarefaSheet({
                 </Select>
               </TkField>
 
-              <TkField label="Modalidade" htmlFor="t-modalidade">
-                <input
-                  id="t-modalidade"
-                  list="t-modalidades"
-                  value={draft.modalidade}
-                  maxLength={80}
-                  placeholder="Selecione ou digite"
-                  disabled={desabilitado}
-                  onChange={(e) => set("modalidade", e.target.value)}
-                  className={tkInput}
-                />
-                <datalist id="t-modalidades">
-                  {modalidades.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </TkField>
-
-              <TkField label="Tipo" htmlFor="t-tipo">
-                <input
-                  id="t-tipo"
-                  list="t-tipos"
-                  value={draft.tipo}
-                  maxLength={80}
-                  placeholder="Selecione ou digite"
-                  disabled={desabilitado}
-                  onChange={(e) => set("tipo", e.target.value)}
-                  className={tkInput}
-                />
-                <datalist id="t-tipos">
-                  {tipos.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </TkField>
-
               <TkField label="Responsável" htmlFor="t-responsavel" className="sm:col-span-2">
                 <Select
                   value={draft.responsavel_id ?? "__nenhum__"}
@@ -479,104 +598,93 @@ export function TarefaSheet({
                 </Select>
               </TkField>
 
-              <TkField
-                label="Secretarias"
-                htmlFor={draft.todas_secretarias ? undefined : "t-secretarias"}
-                className="sm:col-span-2"
-                action={
-                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] text-(--tk-text-2)">
-                    <Switch
-                      checked={draft.todas_secretarias}
-                      disabled={desabilitado}
-                      onCheckedChange={(v) => set("todas_secretarias", v)}
-                    />
-                    Todas as secretarias
-                  </label>
-                }
-              >
-                {draft.todas_secretarias ? (
-                  <p className="flex h-11 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
-                    A tarefa abrange todas as secretarias.
-                  </p>
-                ) : (
-                  <SecretariasMultiSelect
-                    id="t-secretarias"
-                    options={secretarias}
-                    value={draft.secretaria_ids}
-                    onChange={(v) => set("secretaria_ids", v)}
-                    disabled={desabilitado}
-                    placeholder="Selecionar secretarias"
-                    triggerClassName={cn(tkSelect, "h-auto min-h-11 py-1.5 hover:bg-(--tk-input) hover:text-(--tk-text)")}
-                    contentClassName={cn(tkMenu, "p-0")}
-                    itemClassName={tkMenuItem}
-                  />
-                )}
-              </TkField>
-
-              <TkField label="Processo importado" htmlFor="t-processo" className="sm:col-span-2">
-                <ProcessoPicker
-                  id="t-processo"
-                  value={draft.processo_id}
-                  onChange={(v) => set("processo_id", v)}
-                  disabled={desabilitado}
-                />
-              </TkField>
-
-              <TkField label="Link M2A" htmlFor="t-link" className="sm:col-span-2">
-                <div className="relative min-w-0">
-                  <input
-                    id="t-link"
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://..."
-                    value={draft.link_url}
-                    maxLength={2000}
-                    disabled={desabilitado}
-                    onChange={(e) => set("link_url", e.target.value)}
-                    className={cn(tkInput, "pr-[5.25rem]")}
-                  />
-                  <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
-                    {linkValido ? (
-                      <TkTooltip label="Abrir link (nova aba)">
-                        <a
-                          href={linkValido}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label="Abrir link M2A em nova aba"
-                          className={tkButton({ variant: "tertiary", size: "iconSm" })}
-                        >
-                          <ExternalLink />
-                        </a>
-                      </TkTooltip>
-                    ) : (
-                      <TkIconButton label="Abrir link (informe um endereço válido)" size="iconSm" disabled>
-                        <ExternalLink />
-                      </TkIconButton>
-                    )}
-                    <TkIconButton
-                      label="Copiar link"
-                      size="iconSm"
-                      disabled={!linkValido}
-                      onClick={() => void copiarLink()}
-                    >
-                      <Copy />
-                    </TkIconButton>
-                  </div>
-                </div>
-              </TkField>
-
-              <TkField label="Observações" htmlFor="t-obs" className="sm:col-span-2">
+              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
+                Observações / andamento
+              </h3>
+              <TkField label="Lembrete do andamento" htmlFor="t-obs" className="sm:col-span-2">
                 <textarea
                   id="t-obs"
-                  rows={5}
+                  rows={4}
                   maxLength={10000}
                   value={draft.observacao}
                   disabled={desabilitado}
+                  placeholder="Ex.: falta um fornecedor responder à pesquisa."
                   onChange={(e) => set("observacao", e.target.value)}
-                  className={cn(tkTextarea, "resize-y")}
+                  className={cn(
+                    tkTextarea,
+                    "resize-y border-(--tk-warn)/30 bg-(--tk-warn-bg) shadow-none",
+                  )}
                 />
               </TkField>
             </div>
+
+            <FichaTramitacao
+              tarefaId={tarefa.id}
+              podeEditar={podeEditar}
+              etapaNome={etapaAtual?.nome ?? ""}
+              etapas={etapas}
+              etapaAtualId={draft.etapa_id}
+              criadaEm={tarefa.created_at}
+              onImportarContratos={() =>
+                void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } })
+              }
+              vinculos={
+                <TkSection title="Vínculos" description="Processo administrativo e acesso ao M2A.">
+                  <div className="grid gap-4">
+                    <TkField label="Processo administrativo" htmlFor="t-processo">
+                      <ProcessoPicker
+                        id="t-processo"
+                        value={draft.processo_id}
+                        onChange={(v) => set("processo_id", v)}
+                        disabled={desabilitado}
+                      />
+                    </TkField>
+                    <TkField label="Link M2A" htmlFor="t-link">
+                      <div className="relative min-w-0">
+                        <input
+                          id="t-link"
+                          type="url"
+                          inputMode="url"
+                          placeholder="https://..."
+                          value={draft.link_url}
+                          maxLength={2000}
+                          disabled={desabilitado}
+                          onChange={(e) => set("link_url", e.target.value)}
+                          className={cn(tkInput, "pr-[5.25rem]")}
+                        />
+                        <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
+                          {linkValido ? (
+                            <TkTooltip label="Abrir link (nova aba)">
+                              <a
+                                href={linkValido}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Abrir link M2A em nova aba"
+                                className={tkButton({ variant: "tertiary", size: "iconSm" })}
+                              >
+                                <ExternalLink />
+                              </a>
+                            </TkTooltip>
+                          ) : (
+                            <TkIconButton label="Abrir link (informe um endereço válido)" size="iconSm" disabled>
+                              <ExternalLink />
+                            </TkIconButton>
+                          )}
+                          <TkIconButton
+                            label="Copiar link"
+                            size="iconSm"
+                            disabled={!linkValido}
+                            onClick={() => void copiarLink()}
+                          >
+                            <Copy />
+                          </TkIconButton>
+                        </div>
+                      </div>
+                    </TkField>
+                  </div>
+                </TkSection>
+              }
+            />
 
             {camposDaEtapa.length > 0 && (
               <TkSection
@@ -600,7 +708,7 @@ export function TarefaSheet({
 
             {camposOutras.length > 0 && (
               <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-medium text-(--tk-text) [&::-webkit-details-marker]:hidden">
                   <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
                   Campos de outras etapas
                   <span className="text-[12px] font-normal text-(--tk-text-3)">({camposOutras.length})</span>
@@ -656,9 +764,51 @@ export function TarefaSheet({
           </footer>
         )}
         {confirmDialog}
+        {draft && (
+          <AvancoEtapaDialog
+            aberto={avancoAberto}
+            etapaNome={etapas.find((e) => e.id === draft.etapa_id)?.nome ?? "etapa"}
+            campos={identificadoresDaEtapa(camposAtivos, draft.etapa_id)}
+            valores={draft.campos}
+            confirmando={atualizar.isPending}
+            onCancelar={() => {
+              setAvancoAberto(false);
+              if (tarefa) set("etapa_id", tarefa.etapa_id);
+            }}
+            onConfirmar={(valores) => void salvar({ extras: valores, pularGate: true })}
+          />
+        )}
+        {draft && tarefa && (
+          <TramitacaoDialog
+            aberto={tramAberto}
+            regra={regraTramitacao(etapas.find((e) => e.id === draft.etapa_id)?.nome ?? "")}
+            etapaNome={etapas.find((e) => e.id === draft.etapa_id)?.nome ?? "etapa"}
+            numero={documentoDestino(documentos, tarefa.id, draft.etapa_id, etapas)?.numero ?? ""}
+            data={documentoDestino(documentos, tarefa.id, draft.etapa_id, etapas)?.data ?? ""}
+            horario={documentoDestino(documentos, tarefa.id, draft.etapa_id, etapas)?.horario ?? ""}
+            confirmando={atualizar.isPending}
+            onCancelar={() => {
+              setTramAberto(false);
+              set("etapa_id", tarefa.etapa_id);
+            }}
+            onConfirmar={(valor) => void confirmarTram(valor)}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );
+}
+
+function documentoDestino(
+  docs: { tarefa_id: string; chave: string | null; numero: string | null; data: string | null; horario: string | null }[],
+  tarefaId: string,
+  etapaId: string,
+  etapas: Etapa[],
+) {
+  const regra = regraTramitacao(etapas.find((e) => e.id === etapaId)?.nome ?? "");
+  const chave = regra === "publicacao" ? "certame" : regra === "pesquisa" || regra === "etp" ? regra : null;
+  if (!chave) return null;
+  return docs.find((d) => d.tarefa_id === tarefaId && d.chave === chave) ?? null;
 }
 
 function CampoInput({
@@ -677,7 +827,17 @@ function CampoInput({
   const id = `campo-${campo.id}`;
   const rotulo = etapaNome ? `${campo.nome} (${etapaNome})` : campo.nome;
   return (
-    <TkField label={rotulo} htmlFor={id}>
+    <TkField
+      label={rotulo}
+      htmlFor={id}
+      hint={
+        campo.identificador
+          ? campo.obrigatorio
+            ? "Obrigatório para avançar a esta etapa."
+            : "Opcional."
+          : undefined
+      }
+    >
       {campo.tipo === "lista" ? (
         <Select
           value={valor || "__vazio__"}
@@ -717,7 +877,7 @@ function CampoInput({
           }
           step={campo.tipo === "numero" ? "any" : undefined}
           placeholder={campo.tipo === "link" ? "https://..." : undefined}
-          maxLength={1000}
+          maxLength={campo.identificador ? 80 : 1000}
           value={valor}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -847,6 +1007,40 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
   );
 }
 
+function textoDocumentos(detalhes: EventoRow["detalhes"]): string {
+  if (!detalhes || typeof detalhes !== "object" || Array.isArray(detalhes)) return "";
+  const lista = (detalhes as { documentos?: unknown }).documentos;
+  if (!Array.isArray(lista)) return "";
+  return lista
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const o = item as { titulo?: unknown; numero?: unknown; data?: unknown };
+      const rotulo = String(o.titulo || "").trim();
+      const numero = String(o.numero || "").trim();
+      const data = formatarDia(typeof o.data === "string" ? o.data : "");
+      const texto = [numero, data].filter(Boolean).join(" ");
+      return rotulo && texto ? `${rotulo} ${texto}` : "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function textoIdentificadores(detalhes: EventoRow["detalhes"]): string {
+  if (!detalhes || typeof detalhes !== "object" || Array.isArray(detalhes)) return "";
+  const lista = (detalhes as { identificadores?: unknown }).identificadores;
+  if (!Array.isArray(lista)) return "";
+  return lista
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const o = item as { sigla?: unknown; nome?: unknown; valor?: unknown };
+      const rotulo = String(o.sigla || o.nome || "").trim();
+      const valor = String(o.valor || "").trim();
+      return rotulo && valor ? `${rotulo} ${valor}` : "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function descreverEvento(ev: EventoRow, etapas: Etapa[], equipe: MembroEquipe[]): string {
   const d = (ev.detalhes ?? {}) as Record<string, unknown>;
   const etapa = (id: unknown) => etapas.find((e) => e.id === id)?.nome ?? "etapa removida";
@@ -886,24 +1080,29 @@ function HistoricoSection({
   if (eventos.length === 0) return null;
   return (
     <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-medium text-(--tk-text) [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
         Histórico
         <span className="text-[12px] font-normal text-(--tk-text-3)">({eventos.length})</span>
       </summary>
       <ol className="space-y-2.5 border-t border-(--tk-border) px-4 py-3 text-[13px]">
-        {eventos.map((ev) => (
-          <li key={ev.id} className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-3">
+        {eventos.map((ev) => {
+          const numeros = [textoDocumentos(ev.detalhes), textoIdentificadores(ev.detalhes)]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+          <li key={ev.id} className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-3">
             <time
               dateTime={ev.created_at}
-              className="shrink-0 tabular-nums text-(--tk-text-3) sm:w-32"
+              className="shrink-0 tabular-nums font-normal text-(--tk-text-3) sm:w-32"
             >
               {new Date(ev.created_at).toLocaleString("pt-BR", {
                 dateStyle: "short",
                 timeStyle: "short",
               })}
             </time>
-            <span className="min-w-0 break-words text-(--tk-text)">
+            <span className="min-w-0 break-words font-normal text-(--tk-text)">
               {descreverEvento(ev, etapas, equipe)}
               {ev.user_id && (
                 <span className="text-(--tk-text-2)">
@@ -912,8 +1111,15 @@ function HistoricoSection({
                 </span>
               )}
             </span>
+            </div>
+            {numeros && (
+              <p className="break-words text-[12.5px] font-normal text-(--tk-text-2) sm:pl-36">
+                {numeros}
+              </p>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ol>
     </details>
   );

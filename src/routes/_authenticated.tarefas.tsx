@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
-import { Archive, ChevronDown, Layers, Plus, RefreshCw, RotateCcw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Layers, Plus, RefreshCw } from "lucide-react";
 import "@/features/tarefas/tarefas.css";
 import { routeHead } from "@/lib/utils/route-head";
 import { cn } from "@/lib/utils";
@@ -11,36 +12,22 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { notify } from "@/lib/notify";
 import { useSecretariasOpcoes } from "@/features/perfil/hooks";
 import {
-  useAtualizarEtapa,
   useCampos,
   useCriarTarefa,
+  useDocumentos,
   useEquipe,
   useEtapas,
-  useExcluirEtapa,
   useMoverTarefa,
+  type MoverTarefaInput,
   useProcessosPorIds,
-  useSalvarEtapa,
+  registrarDocumentoTramitacao,
+  TAREFAS_KEYS,
   useTarefas,
 } from "@/features/tarefas/hooks";
 import {
@@ -50,18 +37,26 @@ import {
   SITUACOES,
   TIPOS_SUGERIDOS,
   filtrarTarefas,
-  posicaoEntre,
+  identificadoresDaEtapa,
+  identificadoresPendentes,
+  mesclarIdentificadores,
+  regraTramitacao,
+  tramitacaoPendente,
   type Campo,
   type CriterioFiltro,
+  type RegraTramitacao,
   type Etapa,
   type FiltrosTarefas,
   type MembroEquipe,
   type ProcessoResumo,
   type Tarefa,
 } from "@/features/tarefas/lib";
-import { CamposDialog } from "@/features/tarefas/components/CamposDialog";
+import { AvancoEtapaDialog } from "@/features/tarefas/components/AvancoEtapaDialog";
+import {
+  TramitacaoDialog,
+  type ConfirmacaoTramitacao,
+} from "@/features/tarefas/components/TramitacaoDialog";
 import { COLUNA_LARGURA } from "@/features/tarefas/components/EtapaColumn";
-import { EtapaDialog } from "@/features/tarefas/components/EtapaDialog";
 import { FiltrosBar } from "@/features/tarefas/components/FiltrosBar";
 import { RelatorioMenu } from "@/features/tarefas/components/RelatorioMenu";
 import { TarefaSheet } from "@/features/tarefas/components/TarefaSheet";
@@ -76,41 +71,45 @@ import {
   tkDialogDescription,
   tkDialogTitle,
   tkInput,
-  tkMenu,
-  tkMenuItem,
-  tkMenuLabel,
-  tkMenuSeparator,
-  tkSelect,
-  useConfirmDialog,
 } from "@/features/tarefas/components/ui";
 
-type TarefasSearch = Partial<FiltrosTarefas> & { tarefa?: string };
+type TarefasSearch = {
+  q?: string;
+  modalidade?: string[];
+  tipo?: string[];
+  secretaria?: string[];
+  responsavel?: string[];
+  situacao?: string[];
+  tarefa?: string;
+  vista?: "lista";
+};
+
+function listaBusca(valor: unknown): string[] {
+  const itens = Array.isArray(valor) ? valor : typeof valor === "string" ? [valor] : [];
+  return [...new Set(itens.map((v) => String(v).trim()).filter(Boolean).map((v) => v.slice(0, 120)))].slice(0, 30);
+}
 
 // Referências estáveis enquanto as consultas carregam (evita recomputar memos).
 const VAZIO_ETAPAS: Etapa[] = [];
 const VAZIO_CAMPOS: Campo[] = [];
 const VAZIO_TAREFAS: Tarefa[] = [];
 const VAZIO_EQUIPE: MembroEquipe[] = [];
-const VAZIO_SECRETARIAS: { id: string; label: string; sigla: string }[] = [];
+const VAZIO_SECRETARIAS: { id: string; ids: string[]; label: string; sigla: string }[] = [];
+const VAZIO_DOCUMENTOS: never[] = [];
 
-const CHAVES_FILTRO = [
-  "q",
-  "modalidade",
-  "tipo",
-  "secretaria",
-  "responsavel",
-  "situacao",
-] as const;
+const CHAVES_LISTA = ["modalidade", "tipo", "secretaria", "responsavel", "situacao"] as const;
 
 export const Route = createFileRoute("/_authenticated/tarefas")({
   component: Page,
   validateSearch: (search: Record<string, unknown>): TarefasSearch => {
     const out: TarefasSearch = {};
-    for (const k of CHAVES_FILTRO) {
-      const v = search[k];
-      if (typeof v === "string" && v.trim()) out[k] = v.slice(0, 120);
+    if (typeof search.q === "string" && search.q.trim()) out.q = search.q.trim().slice(0, 120);
+    for (const k of CHAVES_LISTA) {
+      const lista = listaBusca(search[k]);
+      if (lista.length) out[k] = lista;
     }
     if (typeof search.tarefa === "string" && search.tarefa) out.tarefa = search.tarefa;
+    if (search.vista === "lista") out.vista = "lista";
     return out;
   },
   head: () =>
@@ -123,43 +122,67 @@ export const Route = createFileRoute("/_authenticated/tarefas")({
     }),
 });
 
+function docDaRegra(
+  docs: { tarefa_id: string; chave: string | null; numero: string | null; data: string | null; horario: string | null }[],
+  tarefaId: string,
+  regra: RegraTramitacao,
+) {
+  const chave = regra === "publicacao" ? "certame" : regra === "pesquisa" || regra === "etp" ? regra : null;
+  if (!chave) return null;
+  return docs.find((d) => d.tarefa_id === tarefaId && d.chave === chave) ?? null;
+}
+
 function Page() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const qc = useQueryClient();
   const { roles } = useAuth();
   const podeEditar = roles.some((r) => r === "admin" || r === "gestor" || r === "operador");
-  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const etapasQ = useEtapas();
   const camposQ = useCampos();
   const tarefasQ = useTarefas();
   const equipeQ = useEquipe();
   const secretariasQ = useSecretariasOpcoes();
+  const documentosQ = useDocumentos();
 
   const etapas = etapasQ.data ?? VAZIO_ETAPAS;
   const campos = camposQ.data ?? VAZIO_CAMPOS;
   const tarefas = tarefasQ.data ?? VAZIO_TAREFAS;
   const equipe = equipeQ.data ?? VAZIO_EQUIPE;
   const secretarias = secretariasQ.data ?? VAZIO_SECRETARIAS;
+  const documentos = documentosQ.data ?? VAZIO_DOCUMENTOS;
 
   const criarTarefa = useCriarTarefa();
   const moverTarefa = useMoverTarefa();
-  const salvarEtapa = useSalvarEtapa();
-  const atualizarEtapa = useAtualizarEtapa();
-  const excluirEtapa = useExcluirEtapa();
 
-  const [etapaDialog, setEtapaDialog] = useState<{ aberto: boolean; etapa: Etapa | null }>({
-    aberto: false,
-    etapa: null,
-  });
-  const [camposEtapa, setCamposEtapa] = useState<Etapa | null>(null);
   const [novaTarefaAberta, setNovaTarefaAberta] = useState(false);
+  const [perguntaProcesso, setPerguntaProcesso] = useState<string | null>(null);
+  const [tram, setTram] = useState<{
+    regra: RegraTramitacao;
+    etapaNome: string;
+    numero: string;
+    data: string;
+    horario: string;
+  } | null>(null);
+  const [avanco, setAvanco] = useState<{
+    etapa: Etapa;
+    campos: Campo[];
+    valores: Record<string, string>;
+    resolve: (valores: Record<string, string> | null) => void;
+  } | null>(null);
 
   const etapasAtivas = useMemo(() => etapas.filter((e) => !e.arquivada), [etapas]);
-  const etapasArquivadas = useMemo(() => etapas.filter((e) => e.arquivada), [etapas]);
 
   const filtros: FiltrosTarefas = useMemo(
-    () => ({ ...FILTROS_VAZIOS, ...Object.fromEntries(CHAVES_FILTRO.map((k) => [k, search[k] ?? ""])) }),
+    () => ({
+      q: search.q ?? "",
+      modalidade: search.modalidade ?? [],
+      tipo: search.tipo ?? [],
+      secretaria: search.secretaria ?? [],
+      responsavel: search.responsavel ?? [],
+      situacao: search.situacao ?? [],
+    }),
     [search],
   );
 
@@ -167,10 +190,21 @@ function Page() {
     (f: FiltrosTarefas) => {
       void navigate({
         search: (prev) => {
-          const next: TarefasSearch = { tarefa: prev.tarefa };
-          for (const k of CHAVES_FILTRO) if (f[k].trim()) next[k] = f[k];
+          const next: TarefasSearch = { tarefa: prev.tarefa, vista: prev.vista };
+          if (f.q.trim()) next.q = f.q.trim();
+          for (const k of CHAVES_LISTA) if (f[k].length) next[k] = f[k];
           return next;
         },
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+
+  const setLista = useCallback(
+    (lista: boolean) => {
+      void navigate({
+        search: (prev) => ({ ...prev, vista: lista ? "lista" : undefined }),
         replace: true,
       });
     },
@@ -189,14 +223,25 @@ function Page() {
 
   /* -------------------------------- Derivados -------------------------------- */
 
-  const siglas = useMemo(
-    () => new Map(secretarias.map((s) => [s.id, s.sigla])),
-    [secretarias],
-  );
-  const secretariasNomes = useMemo(
-    () => new Map(secretarias.map((s) => [s.id, s.label])),
-    [secretarias],
-  );
+  const siglas = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of secretarias) {
+      for (const id of s.ids.length ? s.ids : [s.id]) m.set(id, s.label);
+    }
+    return m;
+  }, [secretarias]);
+  const secretariasNomes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of secretarias) {
+      for (const id of s.ids.length ? s.ids : [s.id]) m.set(id, s.label);
+    }
+    return m;
+  }, [secretarias]);
+  const gruposSecretaria = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const s of secretarias) m.set(s.id, s.ids.length ? s.ids : [s.id]);
+    return m;
+  }, [secretarias]);
   const equipeMap = useMemo(() => new Map(equipe.map((m) => [m.id, m.nome])), [equipe]);
 
   const processoIds = useMemo(
@@ -221,15 +266,26 @@ function Page() {
 
   const camposPorEtapa = useMemo(() => {
     const m = new Map<string, Campo[]>();
+    for (const e of [...etapas].sort((a, b) => a.posicao - b.posicao)) m.set(e.id, []);
     for (const c of campos) {
       if (c.arquivado) continue;
-      const l = m.get(c.etapa_id) ?? [];
-      l.push(c);
-      m.set(c.etapa_id, l);
+      const l = m.get(c.etapa_id);
+      if (l) l.push(c);
+      else m.set(c.etapa_id, [c]);
     }
     for (const l of m.values()) l.sort((a, b) => a.posicao - b.posicao);
     return m;
-  }, [campos]);
+  }, [campos, etapas]);
+
+  const documentosPorTarefa = useMemo(() => {
+    const m = new Map<string, { id: string; chave: string | null; titulo: string; numero: string | null }[]>();
+    for (const d of documentos) {
+      const lista = m.get(d.tarefa_id) ?? [];
+      lista.push({ id: d.id, chave: d.chave, titulo: d.titulo, numero: d.numero });
+      m.set(d.tarefa_id, lista);
+    }
+    return m;
+  }, [documentos]);
 
   const ctx: CardContexto = useMemo(
     () => ({
@@ -238,13 +294,14 @@ function Page() {
       equipe: equipeMap,
       processos: processosMap,
       camposPorEtapa,
+      documentosPorTarefa,
     }),
-    [siglas, secretariasNomes, equipeMap, processosMap, camposPorEtapa],
+    [siglas, secretariasNomes, equipeMap, processosMap, camposPorEtapa, documentosPorTarefa],
   );
 
   const filtradas = useMemo(
-    () => filtrarTarefas(tarefas, filtros, processoTexto),
-    [tarefas, filtros, processoTexto],
+    () => filtrarTarefas(tarefas, filtros, processoTexto, gruposSecretaria),
+    [tarefas, filtros, processoTexto, gruposSecretaria],
   );
 
   const totais = useMemo(() => {
@@ -271,29 +328,29 @@ function Page() {
   const criterios = useMemo<CriterioFiltro[]>(() => {
     const out: CriterioFiltro[] = [];
     if (filtros.q) out.push({ chave: "q", rotulo: "Busca", valor: filtros.q });
-    if (filtros.modalidade)
-      out.push({ chave: "modalidade", rotulo: "Modalidade", valor: filtros.modalidade });
-    if (filtros.tipo) out.push({ chave: "tipo", rotulo: "Tipo", valor: filtros.tipo });
-    if (filtros.secretaria)
+    for (const valor of filtros.modalidade)
+      out.push({ chave: "modalidade", rotulo: "Modalidade", valor, item: valor });
+    for (const valor of filtros.tipo) out.push({ chave: "tipo", rotulo: "Tipo", valor, item: valor });
+    for (const id of filtros.secretaria)
       out.push({
         chave: "secretaria",
         rotulo: "Secretaria",
-        valor: siglas.get(filtros.secretaria) ?? "Secretaria selecionada",
+        valor: siglas.get(id) ?? "Secretaria selecionada",
+        item: id,
       });
-    if (filtros.responsavel)
+    for (const id of filtros.responsavel)
       out.push({
         chave: "responsavel",
         rotulo: "Responsável",
-        valor:
-          filtros.responsavel === "__nenhum__"
-            ? "Sem responsável"
-            : (equipeMap.get(filtros.responsavel) ?? "Pessoa selecionada"),
+        valor: id === "__nenhum__" ? "Sem responsável" : (equipeMap.get(id) ?? "Pessoa selecionada"),
+        item: id,
       });
-    if (filtros.situacao)
+    for (const valor of filtros.situacao)
       out.push({
         chave: "situacao",
         rotulo: "Situação",
-        valor: SITUACOES.find((s) => s.value === filtros.situacao)?.label ?? filtros.situacao,
+        valor: SITUACOES.find((s) => s.value === valor)?.label ?? valor,
+        item: valor,
       });
     return out;
   }, [filtros, siglas, equipeMap]);
@@ -310,14 +367,85 @@ function Page() {
     [tarefas],
   );
 
-  const criar = useCallback(
-    async (etapaId: string, titulo: string) => {
+  const avancoResolve = useRef<((valores: Record<string, string> | null) => void) | null>(null);
+  const pedirAvanco = useCallback(
+    (etapa: Etapa, defs: Campo[], atuais: Record<string, string>) => {
+      if (avancoResolve.current) return Promise.resolve(null);
+      return new Promise<Record<string, string> | null>((resolve) => {
+        avancoResolve.current = resolve;
+        setAvanco({ etapa, campos: defs, valores: atuais, resolve });
+      });
+    },
+    [],
+  );
+  function encerrarAvanco(valores: Record<string, string> | null) {
+    const resolve = avancoResolve.current;
+    avancoResolve.current = null;
+    setAvanco(null);
+    resolve?.(valores);
+  }
+
+  const tramResolve = useRef<((valor: ConfirmacaoTramitacao | null) => void) | null>(null);
+  const pedirTramitacao = useCallback(
+    (pedido: {
+      regra: RegraTramitacao;
+      etapaNome: string;
+      numero: string;
+      data: string;
+      horario: string;
+    }) => {
+      if (tramResolve.current) return Promise.resolve(null);
+      return new Promise<ConfirmacaoTramitacao | null>((resolve) => {
+        tramResolve.current = resolve;
+        setTram(pedido);
+      });
+    },
+    [],
+  );
+  function encerrarTram(valor: ConfirmacaoTramitacao | null) {
+    const resolve = tramResolve.current;
+    tramResolve.current = null;
+    setTram(null);
+    resolve?.(valor);
+  }
+
+  const criarRegistro = useCallback(
+    async (etapaId: string, titulo: string, dataInclusao?: string): Promise<Tarefa | null> => {
+      const etapa = etapas.find((e) => e.id === etapaId);
+      const regra = etapa ? regraTramitacao(etapa.nome) : null;
+      let confirmacao: ConfirmacaoTramitacao | null = null;
+      if (etapa && regra && tramitacaoPendente(regra, [])) {
+        confirmacao = await pedirTramitacao({
+          regra,
+          etapaNome: etapa.nome,
+          numero: "",
+          data: "",
+          horario: "",
+        });
+        if (!confirmacao) return null;
+      }
+      let camposNovos: Record<string, string> | undefined;
+      if (!regra && etapa && identificadoresPendentes(campos, etapaId, {}).length > 0) {
+        const valores = await pedirAvanco(etapa, identificadoresDaEtapa(campos, etapaId), {});
+        if (!valores) return null;
+        camposNovos = valores;
+      }
       try {
-        await criarTarefa.mutateAsync({
+        const nova = await criarTarefa.mutateAsync({
           titulo,
           etapa_id: etapaId,
           posicao: posicaoFinal(etapaId),
+          data_inclusao: dataInclusao,
+          campos: camposNovos,
         });
+        if (confirmacao && regra) {
+          await registrarDocumentoTramitacao(nova.id, regra, confirmacao, []);
+          await qc.invalidateQueries({ queryKey: TAREFAS_KEYS.documentos });
+          if (confirmacao.importar) {
+            void navigate({ to: "/importar-contratos", search: { tarefa: nova.id } });
+          }
+        }
+        return nova;
       } catch (e) {
         notify.error("Não foi possível criar a tarefa", {
           description: e instanceof Error ? e.message : undefined,
@@ -325,128 +453,77 @@ function Page() {
         throw e;
       }
     },
-    [criarTarefa, posicaoFinal],
+    [campos, criarTarefa, etapas, navigate, pedirAvanco, pedirTramitacao, posicaoFinal, qc],
+  );
+
+  const criar = useCallback(
+    async (etapaId: string, titulo: string) => {
+      const nova = await criarRegistro(etapaId, titulo);
+      if (!nova) return false;
+    },
+    [criarRegistro],
   );
 
   const mover = useCallback(
-    (input: Parameters<typeof moverTarefa.mutate>[0]) => {
-      moverTarefa.mutate(input, {
-        onError: (e) =>
-          notify.error("Não foi possível mover a tarefa", {
-            description: e instanceof Error ? e.message : undefined,
-          }),
-      });
+    (input: MoverTarefaInput) => {
+      const falha = (e: unknown) =>
+        notify.error("Não foi possível mover a tarefa", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+      const tarefa = tarefas.find((t) => t.id === input.id);
+      const etapa = etapas.find((e) => e.id === input.etapa_id);
+      if (tarefa && etapa && input.etapa_id !== tarefa.etapa_id) {
+        const regra = regraTramitacao(etapa.nome);
+        const docsTarefa = documentos.filter((d) => d.tarefa_id === tarefa.id);
+        if (regra && tramitacaoPendente(regra, docsTarefa)) {
+          const atual = docDaRegra(docsTarefa, tarefa.id, regra);
+          void pedirTramitacao({
+            regra,
+            etapaNome: etapa.nome,
+            numero: atual?.numero ?? "",
+            data: atual?.data ?? "",
+            horario: atual?.horario ?? "",
+          }).then(async (valor) => {
+            if (!valor) return;
+            try {
+              await registrarDocumentoTramitacao(tarefa.id, regra, valor, documentos);
+              await qc.invalidateQueries({ queryKey: TAREFAS_KEYS.documentos });
+            } catch (e) {
+              notify.error("Não foi possível registrar o documento", {
+                description: e instanceof Error ? e.message : undefined,
+              });
+              return;
+            }
+            moverTarefa.mutate(input, {
+              onError: falha,
+              onSuccess: () => {
+                if (valor.importar) {
+                  void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } });
+                }
+              },
+            });
+          });
+          return;
+        }
+        if (
+          !regra &&
+          identificadoresPendentes(campos, input.etapa_id, tarefa.campos).length > 0
+        ) {
+          void pedirAvanco(
+            etapa,
+            identificadoresDaEtapa(campos, input.etapa_id),
+            tarefa.campos,
+          ).then((valores) => {
+            if (!valores) return;
+            moverTarefa.mutate({ ...input, campos: valores }, { onError: falha });
+          });
+          return;
+        }
+      }
+      moverTarefa.mutate(input, { onError: falha });
     },
-    [moverTarefa],
+    [campos, documentos, etapas, moverTarefa, navigate, pedirAvanco, pedirTramitacao, qc, tarefas],
   );
-
-  async function salvarEtapaDialog(v: {
-    id?: string;
-    nome: string;
-    cor: string;
-    finaliza: boolean;
-  }) {
-    try {
-      await salvarEtapa.mutateAsync({
-        ...v,
-        posicaoNova: etapasAtivas.length
-          ? Math.max(...etapas.map((e) => e.posicao)) + PASSO_POSICAO
-          : PASSO_POSICAO,
-      });
-      setEtapaDialog({ aberto: false, etapa: null });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      notify.error(
-        /duplicate|unique/i.test(msg)
-          ? "Já existe uma etapa com esse nome"
-          : "Não foi possível salvar a etapa",
-        { description: /duplicate|unique/i.test(msg) ? undefined : msg },
-      );
-    }
-  }
-
-  async function moverEtapa(etapa: Etapa, direcao: -1 | 1) {
-    const i = etapasAtivas.findIndex((e) => e.id === etapa.id);
-    const alvo = i + direcao;
-    if (i < 0 || alvo < 0 || alvo >= etapasAtivas.length) return;
-    const ordem = etapasAtivas.filter((e) => e.id !== etapa.id);
-    // Após remover a etapa, inserir na posição `alvo`.
-    const posicao = posicaoEntre(ordem[alvo - 1]?.posicao, ordem[alvo]?.posicao);
-    try {
-      await atualizarEtapa.mutateAsync({ id: etapa.id, patch: { posicao } });
-    } catch (e) {
-      notify.error("Não foi possível mover a etapa", {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    }
-  }
-
-  async function arquivarEtapa(etapa: Etapa) {
-    if ((totais.get(etapa.id) ?? 0) > 0) {
-      notify.error("A etapa ainda tem tarefas", {
-        description: "Mova as tarefas para outra etapa antes de arquivar.",
-      });
-      return;
-    }
-    const ok = await confirm({
-      title: "Arquivar etapa?",
-      description: `A etapa "${etapa.nome}" sai do quadro e pode ser restaurada depois.`,
-      confirmLabel: "Arquivar etapa",
-    });
-    if (!ok) return;
-    try {
-      await atualizarEtapa.mutateAsync({ id: etapa.id, patch: { arquivada: true } });
-    } catch (e) {
-      notify.error("Não foi possível arquivar a etapa", {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    }
-  }
-
-  async function restaurarEtapa(etapa: Etapa) {
-    try {
-      await atualizarEtapa.mutateAsync({
-        id: etapa.id,
-        patch: {
-          arquivada: false,
-          posicao: etapas.length ? Math.max(...etapas.map((e) => e.posicao)) + PASSO_POSICAO : PASSO_POSICAO,
-        },
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      notify.error(
-        /duplicate|unique/i.test(msg)
-          ? "Já existe uma etapa ativa com esse nome"
-          : "Não foi possível restaurar a etapa",
-      );
-    }
-  }
-
-  async function excluirEtapaAcao(etapa: Etapa) {
-    if ((totais.get(etapa.id) ?? 0) > 0) {
-      notify.error("A etapa ainda tem tarefas", {
-        description: "Só é possível excluir etapas vazias. Mova as tarefas ou arquive a etapa.",
-      });
-      return;
-    }
-    const ok = await confirm({
-      title: "Excluir etapa definitivamente?",
-      description: `A etapa "${etapa.nome}" e os campos configurados nela serão excluídos. Esta ação não pode ser desfeita.`,
-      confirmLabel: "Excluir etapa",
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await excluirEtapa.mutateAsync(etapa.id);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      notify.error(
-        /foreign key|violates/i.test(msg)
-          ? "Etapa com histórico de tarefas — arquive em vez de excluir"
-          : "Não foi possível excluir a etapa",
-      );
-    }
-  }
 
   /* ---------------------------------- Render --------------------------------- */
 
@@ -459,7 +536,7 @@ function Page() {
         <div className="flex min-w-0 flex-col gap-5">
           <header className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 max-w-3xl space-y-1.5">
-              <h1 className="text-[30px] font-[650] leading-tight tracking-tight text-(--tk-text)">
+              <h1 className="text-[30px] font-semibold leading-tight tracking-tight text-(--tk-text)">
                 Tarefas
               </h1>
               <p className="text-[14px] leading-relaxed text-(--tk-text-2)">
@@ -468,29 +545,6 @@ function Page() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
-              {etapasArquivadas.length > 0 && podeEditar && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <TkButton variant="tertiary">
-                      <Archive /> Arquivadas ({etapasArquivadas.length})
-                      <ChevronDown className="text-(--tk-text-3)" />
-                    </TkButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className={cn(tkMenu, "w-64")}>
-                    <DropdownMenuLabel className={tkMenuLabel}>Etapas arquivadas</DropdownMenuLabel>
-                    <DropdownMenuSeparator className={tkMenuSeparator} />
-                    {etapasArquivadas.map((e) => (
-                      <DropdownMenuItem
-                        key={e.id}
-                        className={tkMenuItem}
-                        onSelect={() => void restaurarEtapa(e)}
-                      >
-                        <RotateCcw /> <span className="truncate">Restaurar “{e.nome}”</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
               <RelatorioMenu
                 desabilitado={carregando || Boolean(erro)}
                 contexto={{
@@ -504,22 +558,14 @@ function Page() {
                 }}
               />
               {podeEditar && (
-                <>
-                  <TkButton
-                    variant="secondary"
-                    onClick={() => setEtapaDialog({ aberto: true, etapa: null })}
-                  >
-                    <Layers /> Nova etapa
-                  </TkButton>
-                  <TkButton
-                    variant="primary"
-                    className="px-5"
-                    onClick={() => setNovaTarefaAberta(true)}
-                    disabled={etapasAtivas.length === 0}
-                  >
-                    <Plus /> Nova tarefa
-                  </TkButton>
-                </>
+                <TkButton
+                  variant="primary"
+                  className="px-5"
+                  onClick={() => setNovaTarefaAberta(true)}
+                  disabled={etapasAtivas.length === 0}
+                >
+                  <Plus /> Nova tarefa
+                </TkButton>
               )}
             </div>
           </header>
@@ -533,6 +579,8 @@ function Page() {
             tipos={tipos}
             secretarias={secretarias}
             equipe={equipe}
+            lista={search.vista === "lista"}
+            onLista={setLista}
           />
 
           {carregando ? (
@@ -577,17 +625,7 @@ function Page() {
             <TkEmpty
               icon={Layers}
               title="Nenhuma etapa configurada"
-              description="Crie a primeira etapa para começar a organizar as tarefas da equipe."
-              action={
-                podeEditar ? (
-                  <TkButton
-                    variant="primary"
-                    onClick={() => setEtapaDialog({ aberto: true, etapa: null })}
-                  >
-                    <Plus /> Nova etapa
-                  </TkButton>
-                ) : undefined
-              }
+              description="As etapas do quadro são criadas em Configurações."
             />
           ) : (
             <TarefasBoard
@@ -597,14 +635,10 @@ function Page() {
               ctx={ctx}
               podeEditar={podeEditar}
               selecionadaId={search.tarefa}
+              lista={search.vista === "lista"}
               onMover={mover}
               onAbrir={abrirTarefa}
               onCriar={criar}
-              onEditarEtapa={(etapa) => setEtapaDialog({ aberto: true, etapa })}
-              onCamposEtapa={setCamposEtapa}
-              onMoverEtapa={(e, d) => void moverEtapa(e, d)}
-              onArquivarEtapa={(e) => void arquivarEtapa(e)}
-              onExcluirEtapa={(e) => void excluirEtapaAcao(e)}
             />
           )}
         </div>
@@ -621,74 +655,139 @@ function Page() {
           onFechar={() => abrirTarefa(undefined)}
         />
 
-        <EtapaDialog
-          aberto={etapaDialog.aberto}
-          etapa={etapaDialog.etapa}
-          salvando={salvarEtapa.isPending}
-          onFechar={() => setEtapaDialog({ aberto: false, etapa: null })}
-          onSalvar={(v) => void salvarEtapaDialog(v)}
-        />
-
-        <CamposDialog etapa={camposEtapa} campos={campos} onFechar={() => setCamposEtapa(null)} />
-
         <NovaTarefaDialog
           aberto={novaTarefaAberta}
-          etapas={etapasAtivas}
           onFechar={() => setNovaTarefaAberta(false)}
-          onCriar={async (etapaId, titulo) => {
+          onCriar={async (titulo, dataInclusao) => {
+            const pauta =
+              etapasAtivas.find((e) => /pauta/i.test(e.nome)) ?? etapasAtivas[0];
+            if (!pauta) {
+              notify.error("Cadastre a etapa Pauta antes de criar a demanda");
+              return;
+            }
             try {
-              const nova = await criarTarefa.mutateAsync({
-                titulo,
-                etapa_id: etapaId,
-                posicao: posicaoFinal(etapaId),
-              });
+              const nova = await criarRegistro(pauta.id, titulo, dataInclusao);
+              if (!nova) return;
               setNovaTarefaAberta(false);
-              abrirTarefa(nova.id);
-            } catch (e) {
-              notify.error("Não foi possível criar a tarefa", {
-                description: e instanceof Error ? e.message : undefined,
-              });
+              setPerguntaProcesso(nova.id);
+            } catch {
+              // O aviso já foi exibido.
             }
           }}
-          salvando={criarTarefa.isPending}
+          salvando={criarTarefa.isPending || Boolean(avanco) || Boolean(tram)}
         />
-        {confirmDialog}
+        <Dialog
+          open={Boolean(perguntaProcesso)}
+          onOpenChange={(o) => {
+            if (o || !perguntaProcesso) return;
+            const id = perguntaProcesso;
+            setPerguntaProcesso(null);
+            abrirTarefa(id);
+          }}
+        >
+          <DialogContent hideClose className={cn(tkDialog, "sm:max-w-md")}>
+            <TkPanelHeader
+              onClose={() => {
+                const id = perguntaProcesso;
+                setPerguntaProcesso(null);
+                if (id) abrirTarefa(id);
+              }}
+              title={
+                <DialogTitle className={tkDialogTitle}>Processo administrativo</DialogTitle>
+              }
+              description={
+                <DialogDescription className={tkDialogDescription}>
+                  Deseja criar ou vincular um processo administrativo a esta demanda?
+                </DialogDescription>
+              }
+            />
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <TkButton
+                variant="secondary"
+                onClick={() => {
+                  const id = perguntaProcesso;
+                  setPerguntaProcesso(null);
+                  if (id) abrirTarefa(id);
+                }}
+              >
+                Fazer isso depois
+              </TkButton>
+              <TkButton
+                variant="primary"
+                onClick={() => {
+                  const id = perguntaProcesso;
+                  setPerguntaProcesso(null);
+                  if (id) void navigate({ to: "/processos", search: { tarefa: id } });
+                }}
+              >
+                Criar/vincular processo
+              </TkButton>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <TramitacaoDialog
+          aberto={Boolean(tram)}
+          regra={tram?.regra ?? null}
+          etapaNome={tram?.etapaNome ?? ""}
+          numero={tram?.numero ?? ""}
+          data={tram?.data ?? ""}
+          horario={tram?.horario ?? ""}
+          confirmando={criarTarefa.isPending || moverTarefa.isPending}
+          onCancelar={() => encerrarTram(null)}
+          onConfirmar={(valor) => encerrarTram(valor)}
+        />
+        <AvancoEtapaDialog
+          aberto={Boolean(avanco)}
+          etapaNome={avanco?.etapa.nome ?? ""}
+          campos={avanco?.campos ?? []}
+          valores={avanco?.valores ?? {}}
+          confirmando={criarTarefa.isPending || moverTarefa.isPending}
+          onCancelar={() => encerrarAvanco(null)}
+          onConfirmar={(form) => {
+            if (!avanco) return;
+            encerrarAvanco(mesclarIdentificadores(avanco.valores, form));
+          }}
+        />
       </TooltipProvider>
     </AppShell>
   );
 }
 
+function hojeLocal(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 function NovaTarefaDialog({
   aberto,
-  etapas,
   salvando,
   onFechar,
   onCriar,
 }: {
   aberto: boolean;
-  etapas: Etapa[];
   salvando: boolean;
   onFechar: () => void;
-  onCriar: (etapaId: string, titulo: string) => void | Promise<void>;
+  onCriar: (titulo: string, dataInclusao: string) => void | Promise<void>;
 }) {
   const [titulo, setTitulo] = useState("");
-  const [etapaId, setEtapaId] = useState<string>("");
-  const etapaEfetiva = etapaId && etapas.some((e) => e.id === etapaId) ? etapaId : (etapas[0]?.id ?? "");
+  const [dataInclusao, setDataInclusao] = useState(hojeLocal);
 
   function fechar() {
     setTitulo("");
+    setDataInclusao(hojeLocal());
     onFechar();
   }
 
   return (
-    <Dialog open={aberto} onOpenChange={(o) => !o && fechar()}>
+    <Dialog open={aberto} onOpenChange={(o) => !o && !salvando && fechar()}>
       <DialogContent hideClose className={cn(tkDialog, "sm:max-w-md")}>
         <TkPanelHeader
           onClose={fechar}
           title={<DialogTitle className={tkDialogTitle}>Nova tarefa</DialogTitle>}
           description={
             <DialogDescription className={tkDialogDescription}>
-              Após a criação, o painel de detalhes abre para completar as informações.
+              A demanda entra na Pauta. Processo e documentos podem ser vinculados depois.
             </DialogDescription>
           }
         />
@@ -696,8 +795,8 @@ function NovaTarefaDialog({
           className="space-y-5"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!titulo.trim() || !etapaEfetiva) return;
-            void onCriar(etapaEfetiva, titulo.trim());
+            if (!titulo.trim() || !dataInclusao || salvando) return;
+            void onCriar(titulo.trim(), dataInclusao);
           }}
         >
           <TkField label="Título" htmlFor="nt-titulo">
@@ -706,31 +805,27 @@ function NovaTarefaDialog({
               autoFocus
               maxLength={300}
               value={titulo}
-              placeholder="Descreva a atividade"
+              placeholder="Descreva a demanda"
               onChange={(e) => setTitulo(e.target.value)}
               className={tkInput}
             />
           </TkField>
-          <TkField label="Etapa" htmlFor="nt-etapa">
-            <Select value={etapaEfetiva} onValueChange={setEtapaId}>
-              <SelectTrigger id="nt-etapa" className={tkSelect}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className={tkMenu}>
-                {etapas.map((e) => (
-                  <SelectItem key={e.id} value={e.id} className={tkMenuItem}>
-                    {e.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <TkField label="Data de inclusão" htmlFor="nt-data">
+            <input
+              id="nt-data"
+              type="date"
+              required
+              value={dataInclusao}
+              onChange={(e) => setDataInclusao(e.target.value)}
+              className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+            />
           </TkField>
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <TkButton variant="secondary" onClick={fechar}>
+            <TkButton variant="secondary" onClick={fechar} disabled={salvando}>
               Cancelar
             </TkButton>
-            <TkButton type="submit" variant="primary" disabled={!titulo.trim() || salvando}>
-              Criar tarefa
+            <TkButton type="submit" variant="primary" disabled={!titulo.trim() || !dataInclusao || salvando}>
+              Salvar tarefa
             </TkButton>
           </div>
         </form>

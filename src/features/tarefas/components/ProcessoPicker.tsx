@@ -57,7 +57,7 @@ export function ProcessoPicker({ id, value, onChange, disabled }: Props) {
               <Search className="size-4 shrink-0 text-(--tk-text-3)" aria-hidden />
               {selecionado ? (
                 <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                  <span className="shrink-0 font-semibold tabular-nums text-(--tk-text)">{numero}</span>
+                  <span className="shrink-0 font-medium tabular-nums text-(--tk-text)">{numero}</span>
                   <span className="truncate text-(--tk-text-2)">{selecionado.objeto}</span>
                 </span>
               ) : (
@@ -110,7 +110,7 @@ export function ProcessoPicker({ id, value, onChange, disabled }: Props) {
                       aria-hidden
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold tabular-nums">
+                      <span className="block truncate font-medium tabular-nums">
                         {p.numero_processo || "Sem número"}
                       </span>
                       <span className="block truncate text-[12.5px] text-(--tk-text-2)">{p.objeto}</span>

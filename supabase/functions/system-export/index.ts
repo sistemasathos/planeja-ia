@@ -42,6 +42,9 @@ const TABLE_GROUPS: Record<string, string[]> = {
     "tarefas",
     "tarefa_secretarias",
     "tarefa_anexos",
+    "tarefa_documentos",
+    "tarefa_fases",
+    "tarefa_contratos",
     "tarefa_eventos",
   ],
 };

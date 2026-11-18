@@ -112,7 +112,7 @@ export function EtapaDialog({ aberto, etapa, salvando, onFechar, onSalvar }: Pro
                   onChange={(e) => setCor(e.target.value)}
                   className="absolute inset-0 size-full cursor-pointer opacity-0"
                 />
-                {!personalizada && <span className="text-[13px] font-semibold text-(--tk-text-3)" aria-hidden>+</span>}
+                {!personalizada && <span className="text-[13px] font-medium text-(--tk-text-3)" aria-hidden>+</span>}
               </label>
             </div>
           </TkField>
@@ -121,7 +121,7 @@ export function EtapaDialog({ aberto, etapa, salvando, onFechar, onSalvar }: Pro
             className="flex cursor-pointer items-center justify-between gap-4 rounded-(--tk-radius-control) border border-(--tk-border) bg-(--tk-panel-muted) p-3.5"
           >
             <span className="min-w-0 space-y-0.5">
-              <span className="block text-[14px] font-semibold text-(--tk-text)">Etapa de conclusão</span>
+              <span className="block text-[14px] font-medium text-(--tk-text)">Etapa de conclusão</span>
               <span className="block text-[12.5px] text-(--tk-text-2)">
                 Tarefas nesta etapa contam como concluídas no relatório.
               </span>

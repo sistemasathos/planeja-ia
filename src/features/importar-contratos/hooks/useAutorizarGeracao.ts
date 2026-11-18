@@ -73,6 +73,7 @@ export function useAutorizarGeracao(options: {
   m2aItens: M2AItemRow[];
   setBusy: (value: boolean) => void;
   dataBatchOverride?: string;
+  tarefaId?: string;
 }) {
   const {
     jobDetail,
@@ -88,6 +89,7 @@ export function useAutorizarGeracao(options: {
     m2aItens,
     setBusy,
     dataBatchOverride,
+    tarefaId,
   } = options;
 
   const qc = useQueryClient();
@@ -647,6 +649,17 @@ export function useAutorizarGeracao(options: {
         },
       });
 
+      if (tarefaId && contratosInseridosIds.length > 0) {
+        const { error: vinculoErro } = await supabase.from("tarefa_contratos").upsert(
+          contratosInseridosIds.map((contrato_id) => ({ tarefa_id: tarefaId, contrato_id })),
+          { onConflict: "tarefa_id,contrato_id", ignoreDuplicates: true },
+        );
+        if (vinculoErro) {
+          notify.error("Contratos gerados, mas não foram vinculados à demanda", {
+            description: vinculoErro.message,
+          });
+        }
+      }
       notify.success(`${inserts.length} contratos gerados`);
       finishTask(`${inserts.length} contrato(s) gerado(s) com sucesso.`);
       qc.invalidateQueries({ queryKey: ["cij-detail", activeJobId] });
@@ -655,7 +668,12 @@ export function useAutorizarGeracao(options: {
       qc.invalidateQueries({ queryKey: ["processos"] });
       qc.invalidateQueries({ queryKey: ["processos-min"] });
       qc.invalidateQueries({ queryKey: ["numeracao"] });
-      navigate({ to: "/processos/$id", params: { id: processoIdFinal } });
+      qc.invalidateQueries({ queryKey: ["tarefas"] });
+      if (tarefaId) {
+        navigate({ to: "/tarefas", search: { tarefa: tarefaId } });
+      } else {
+        navigate({ to: "/processos/$id", params: { id: processoIdFinal } });
+      }
     } catch (e: any) {
       console.error("ERRO NO PROCESSO DE GERAÇÃO:", e);
       failTask(e?.message ?? "Falha ao gerar contratos.");
@@ -687,6 +705,7 @@ export function useAutorizarGeracao(options: {
     failTask,
     setBusy,
     dataBatchOverride,
+    tarefaId,
   ]);
 
   return { autorizarGeracao };

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import type { PerfilFormValues } from "./lib";
+import { agruparSecretarias, type PerfilFormValues } from "./lib";
 
 export const PERFIL_QUERY_KEY = ["perfil"] as const;
 
@@ -56,16 +56,20 @@ export function useSecretariasOpcoes() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("secretarias")
-        .select("id, sigla, nome, ativa")
+        .select("id, sigla, nome, numero, m2a_orgao_id, ativa")
         .order("numero");
       if (error) throw error;
-      return (data ?? [])
-        .filter((s) => s.ativa !== false)
-        .map((s) => ({
-          id: s.id,
-          sigla: s.sigla,
-          label: `${s.sigla} — ${s.nome}`,
-        }));
+      return agruparSecretarias(
+        (data ?? [])
+          .filter((s) => s.ativa !== false)
+          .map((s) => ({
+            id: s.id,
+            sigla: s.sigla,
+            nome: s.nome,
+            numero: s.numero,
+            m2a_orgao_id: s.m2a_orgao_id,
+          })),
+      );
     },
   });
 }

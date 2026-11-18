@@ -156,15 +156,15 @@ export function groupRows(
   const map = new Map<string, EnrichedSec[]>();
 
   for (const row of rows) {
-    const key = row.m2a_orgao_id || `sem-ug-${row.numero}-${row.sigla}`;
+    const sigla = row.sigla.trim().toUpperCase();
+    const key = sigla || row.m2a_orgao_id || `sem-ug-${row.numero}-${row.sigla}`;
     map.set(key, [...(map.get(key) ?? []), row]);
   }
 
   return [...map.entries()]
     .map(([key, group]) => {
-      const unidade = group[0]?.m2a_orgao_id
-        ? (unidadeByM2A.get(group[0].m2a_orgao_id) ?? null)
-        : null;
+      const orgaoId = group.find((row) => row.m2a_orgao_id)?.m2a_orgao_id ?? null;
+      const unidade = orgaoId ? (unidadeByM2A.get(orgaoId) ?? null) : null;
       const sortedRows = [...group].sort(
         (a, b) =>
           a.numero - b.numero ||
@@ -181,11 +181,11 @@ export function groupRows(
 
       const title = unidade?.nome ?? principal.nome;
       const dotacoesLabel = `${sortedRows.length} dotação(ões)`;
-      const subtitle = unidade
-        ? principal.sigla
-          ? `${principal.sigla} · ${dotacoesLabel}`
-          : dotacoesLabel
-        : "Unidade Gestora não vinculada";
+      const subtitle = principal.sigla.trim()
+        ? `${principal.sigla} · ${dotacoesLabel}`
+        : unidade
+          ? dotacoesLabel
+          : "Unidade Gestora não vinculada";
 
       return {
         key,

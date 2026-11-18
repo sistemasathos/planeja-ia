@@ -1553,9 +1553,12 @@ export type Database = {
           created_at: string
           etapa_id: string
           id: string
+          identificador: boolean
           nome: string
+          obrigatorio: boolean
           opcoes: Json
           posicao: number
+          sigla: string | null
           tipo: string
           updated_at: string
           usa_como_fase: boolean
@@ -1565,9 +1568,12 @@ export type Database = {
           created_at?: string
           etapa_id: string
           id?: string
+          identificador?: boolean
           nome: string
+          obrigatorio?: boolean
           opcoes?: Json
           posicao?: number
+          sigla?: string | null
           tipo: string
           updated_at?: string
           usa_como_fase?: boolean
@@ -1577,9 +1583,12 @@ export type Database = {
           created_at?: string
           etapa_id?: string
           id?: string
+          identificador?: boolean
           nome?: string
+          obrigatorio?: boolean
           opcoes?: Json
           posicao?: number
+          sigla?: string | null
           tipo?: string
           updated_at?: string
           usa_como_fase?: boolean
@@ -1692,11 +1701,105 @@ export type Database = {
           },
         ]
       }
+      tarefa_documentos: {
+        Row: {
+          chave: string | null
+          created_at: string
+          data: string | null
+          horario: string | null
+          id: string
+          link_url: string | null
+          numero: string | null
+          observacao: string | null
+          posicao: number
+          tarefa_id: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          chave?: string | null
+          created_at?: string
+          data?: string | null
+          horario?: string | null
+          id?: string
+          link_url?: string | null
+          numero?: string | null
+          observacao?: string | null
+          posicao?: number
+          tarefa_id: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          chave?: string | null
+          created_at?: string
+          data?: string | null
+          horario?: string | null
+          id?: string
+          link_url?: string | null
+          numero?: string | null
+          observacao?: string | null
+          posicao?: number
+          tarefa_id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tarefa_fases: {
+        Row: {
+          chave: string
+          data: string | null
+          observacao: string | null
+          posicao: number
+          situacao: string
+          tarefa_id: string
+          updated_at: string
+        }
+        Insert: {
+          chave: string
+          data?: string | null
+          observacao?: string | null
+          posicao?: number
+          situacao?: string
+          tarefa_id: string
+          updated_at?: string
+        }
+        Update: {
+          chave?: string
+          data?: string | null
+          observacao?: string | null
+          posicao?: number
+          situacao?: string
+          tarefa_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tarefa_contratos: {
+        Row: {
+          contrato_id: string
+          created_at: string
+          tarefa_id: string
+        }
+        Insert: {
+          contrato_id: string
+          created_at?: string
+          tarefa_id: string
+        }
+        Update: {
+          contrato_id?: string
+          created_at?: string
+          tarefa_id?: string
+        }
+        Relationships: []
+      }
       tarefas: {
         Row: {
           campos: Json
           created_at: string
           created_by: string | null
+          data_inclusao: string
           deleted_at: string | null
           etapa_desde: string
           etapa_id: string
@@ -1717,6 +1820,7 @@ export type Database = {
           campos?: Json
           created_at?: string
           created_by?: string | null
+          data_inclusao?: string
           deleted_at?: string | null
           etapa_desde?: string
           etapa_id: string
@@ -1737,6 +1841,7 @@ export type Database = {
           campos?: Json
           created_at?: string
           created_by?: string | null
+          data_inclusao?: string
           deleted_at?: string | null
           etapa_desde?: string
           etapa_id?: string

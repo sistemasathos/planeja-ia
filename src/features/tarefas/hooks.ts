@@ -18,9 +18,11 @@ import {
   type Campo,
   type CampoTipo,
   type Etapa,
+  DOCUMENTOS_FIXOS,
   type EventoRow,
   type AnexoRow,
   type MembroEquipe,
+  type RegraTramitacao,
   type Tarefa,
 } from "./lib";
 
@@ -33,6 +35,9 @@ export const TAREFAS_KEYS = {
   equipe: ["equipe-usuarios"] as const,
   anexos: (id: string) => ["tarefas", "anexos", id] as const,
   eventos: (id: string) => ["tarefas", "eventos", id] as const,
+  documentos: ["tarefas", "documentos"] as const,
+  fases: (id: string) => ["tarefas", "fases", id] as const,
+  contratos: (id: string) => ["tarefas", "contratos", id] as const,
 };
 
 export class ConflitoTarefaError extends Error {
@@ -204,6 +209,8 @@ export function useCriarTarefa() {
       titulo: string;
       etapa_id: string;
       posicao: number;
+      data_inclusao?: string;
+      campos?: Record<string, string>;
     }): Promise<Tarefa> => {
       const { data, error } = await supabase
         .from("tarefas")
@@ -211,6 +218,8 @@ export function useCriarTarefa() {
           titulo: input.titulo.trim(),
           etapa_id: input.etapa_id,
           posicao: input.posicao,
+          ...(input.data_inclusao ? { data_inclusao: input.data_inclusao } : {}),
+          ...(input.campos ? { campos: input.campos as Json } : {}),
         })
         .select("*")
         .single();
@@ -239,6 +248,7 @@ export type PatchTarefa = {
   situacao?: string;
   observacao?: string | null;
   campos?: Record<string, string>;
+  data_inclusao?: string;
 };
 
 export function useAtualizarTarefa() {
@@ -299,16 +309,21 @@ async function sincronizarSecretarias(tarefaId: string, ids: string[]) {
   }
 }
 
+export type MoverTarefaInput = {
+  id: string;
+  etapa_id: string;
+  posicao: number;
+  /** Renumera a coluna de destino quando o intervalo ficou minúsculo. */
+  rebalancear?: string[];
+  /** Mapa completo de campos, quando o avanço grava identificadores junto com a etapa. */
+  campos?: Record<string, string>;
+};
+
 export function useMoverTarefa() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      id: string;
-      etapa_id: string;
-      posicao: number;
-      /** Renumera a coluna de destino quando o intervalo ficou minúsculo. */
-      rebalancear?: string[];
-    }) => {
+    mutationFn: async (input: MoverTarefaInput) => {
+      const campos = input.campos ? (input.campos as Json) : undefined;
       if (input.rebalancear?.length) {
         await Promise.all(
           input.rebalancear.map((id, i) =>
@@ -316,7 +331,9 @@ export function useMoverTarefa() {
               .from("tarefas")
               .update({
                 posicao: (i + 1) * PASSO_POSICAO,
-                ...(id === input.id ? { etapa_id: input.etapa_id } : {}),
+                ...(id === input.id
+                  ? { etapa_id: input.etapa_id, ...(campos ? { campos } : {}) }
+                  : {}),
               })
               .eq("id", id)
               .then(({ error }) => {
@@ -328,7 +345,11 @@ export function useMoverTarefa() {
       }
       const { error } = await supabase
         .from("tarefas")
-        .update({ etapa_id: input.etapa_id, posicao: input.posicao })
+        .update({
+          etapa_id: input.etapa_id,
+          posicao: input.posicao,
+          ...(campos ? { campos } : {}),
+        })
         .eq("id", input.id);
       if (error) throw error;
     },
@@ -342,6 +363,7 @@ export function useMoverTarefa() {
                 ...t,
                 etapa_id: input.etapa_id,
                 posicao: input.posicao,
+                ...(input.campos ? { campos: input.campos } : {}),
                 etapa_desde:
                   t.etapa_id === input.etapa_id
                     ? t.etapa_desde
@@ -455,13 +477,23 @@ export function useSalvarCampo() {
       tipo: CampoTipo;
       opcoes: string[];
       usa_como_fase: boolean;
+      identificador: boolean;
+      sigla: string;
+      obrigatorio: boolean;
       posicao?: number;
     }) => {
+      const identificador =
+        input.identificador && (input.tipo === "texto" || input.tipo === "numero");
       const base = {
         nome: input.nome.trim(),
         tipo: input.tipo,
         opcoes: (input.tipo === "lista" ? input.opcoes : []) as Json,
-        usa_como_fase: input.tipo === "lista" && input.usa_como_fase,
+        usa_como_fase: input.tipo === "lista" && input.usa_como_fase && !identificador,
+        identificador,
+        sigla: identificador
+          ? input.sigla.trim().toLocaleUpperCase("pt-BR").slice(0, 16) || null
+          : null,
+        obrigatorio: identificador && input.obrigatorio,
       };
       if (input.id) {
         const { error } = await supabase
@@ -550,6 +582,182 @@ export function useRemoverAnexo(tarefaId: string) {
       void invalidarTarefas(qc);
     },
   });
+}
+
+export type DocumentoRow = Database["public"]["Tables"]["tarefa_documentos"]["Row"];
+export type FaseRow = Database["public"]["Tables"]["tarefa_fases"]["Row"];
+
+export function useDocumentos() {
+  return useQuery({
+    queryKey: TAREFAS_KEYS.documentos,
+    queryFn: async (): Promise<DocumentoRow[]> => {
+      const { data, error } = await supabase
+        .from("tarefa_documentos")
+        .select("*")
+        .order("posicao");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export async function salvarDocumento(input: {
+  tarefaId: string;
+  id?: string;
+  chave?: string | null;
+  titulo: string;
+  numero?: string | null;
+  data?: string | null;
+  horario?: string | null;
+  observacao?: string | null;
+  link_url?: string | null;
+  posicao?: number;
+}) {
+  const linha = {
+    titulo: input.titulo.trim(),
+    numero: input.numero?.trim() || null,
+    data: input.data || null,
+    horario: input.horario || null,
+    observacao: input.observacao?.trim() || null,
+    link_url: input.link_url?.trim() || null,
+    chave: input.chave ?? null,
+    posicao: input.posicao ?? 0,
+  };
+  if (input.id) {
+    const { error } = await supabase.from("tarefa_documentos").update(linha).eq("id", input.id);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase
+    .from("tarefa_documentos")
+    .insert({ ...linha, tarefa_id: input.tarefaId });
+  if (error) throw error;
+}
+
+/** Grava número e data pedidos no avanço. Não apaga um documento já preenchido com valor vazio. */
+export async function registrarDocumentoTramitacao(
+  tarefaId: string,
+  regra: RegraTramitacao,
+  valor: { numero: string; data: string; horario: string },
+  docs: { id: string; tarefa_id: string; chave: string | null }[],
+) {
+  const chave = regra === "publicacao" ? "certame" : regra === "pesquisa" || regra === "etp" ? regra : null;
+  if (!chave) return;
+  if (!valor.numero.trim() && !valor.data && !valor.horario) return;
+  const def = DOCUMENTOS_FIXOS.find((d) => d.chave === chave);
+  const atual = docs.find((d) => d.tarefa_id === tarefaId && d.chave === chave);
+  await salvarDocumento({
+    id: atual?.id,
+    tarefaId,
+    chave,
+    titulo: def?.titulo ?? chave,
+    numero: valor.numero,
+    data: valor.data,
+    horario: chave === "certame" ? valor.horario : null,
+    posicao: DOCUMENTOS_FIXOS.findIndex((d) => d.chave === chave),
+  });
+}
+
+export function useSalvarDocumento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: salvarDocumento,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.documentos }),
+  });
+}
+
+export function useExcluirDocumento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("tarefa_documentos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.documentos }),
+  });
+}
+
+export function useFases(tarefaId: string | undefined) {
+  return useQuery({
+    queryKey: TAREFAS_KEYS.fases(tarefaId ?? ""),
+    enabled: Boolean(tarefaId),
+    queryFn: async (): Promise<FaseRow[]> => {
+      const { data, error } = await supabase
+        .from("tarefa_fases")
+        .select("*")
+        .eq("tarefa_id", tarefaId!);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useSalvarFase(tarefaId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      chave: string;
+      situacao: string;
+      data?: string | null;
+      observacao?: string | null;
+      posicao: number;
+    }) => {
+      const { error } = await supabase.from("tarefa_fases").upsert(
+        {
+          tarefa_id: tarefaId,
+          chave: input.chave,
+          situacao: input.situacao,
+          data: input.data || null,
+          observacao: input.observacao?.trim() || null,
+          posicao: input.posicao,
+        },
+        { onConflict: "tarefa_id,chave" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fases(tarefaId) }),
+  });
+}
+
+export type ContratoVinculo = {
+  id: string;
+  numero_contrato: string;
+  objeto: string;
+};
+
+export function useContratosTarefa(tarefaId: string | undefined) {
+  return useQuery({
+    queryKey: TAREFAS_KEYS.contratos(tarefaId ?? ""),
+    enabled: Boolean(tarefaId),
+    queryFn: async (): Promise<ContratoVinculo[]> => {
+      const { data, error } = await supabase
+        .from("tarefa_contratos")
+        .select("contrato_id")
+        .eq("tarefa_id", tarefaId!);
+      if (error) throw error;
+      const ids = (data ?? []).map((r) => r.contrato_id);
+      if (!ids.length) return [];
+      const { data: contratos, error: cErr } = await supabase
+        .from("contratos")
+        .select("id, numero_contrato, objeto")
+        .in("id", ids);
+      if (cErr) throw cErr;
+      return (contratos ?? []).map((c) => ({
+        id: c.id,
+        numero_contrato: c.numero_contrato,
+        objeto: c.objeto,
+      }));
+    },
+  });
+}
+
+export async function vincularContratos(tarefaId: string, contratoIds: string[]) {
+  if (!contratoIds.length) return;
+  const { error } = await supabase.from("tarefa_contratos").upsert(
+    contratoIds.map((contrato_id) => ({ tarefa_id: tarefaId, contrato_id })),
+    { onConflict: "tarefa_id,contrato_id", ignoreDuplicates: true },
+  );
+  if (error) throw error;
 }
 
 export async function abrirAnexo(anexo: AnexoRow) {

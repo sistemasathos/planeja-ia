@@ -66,7 +66,7 @@ planeja-ia/
 6. **M2A** — sync processo, envio contrato (SSE), documentos, numeração, atas/participantes.
 7. **Relatórios / export** — Excel pauta consolidada, relatório contratos (RPC + `excel-export.ts`).
 8. **Auditoria / logs** — `audit_logs`, rota `/logs`.
-9. **Tarefas** — Kanban compartilhado da equipe (`/tarefas`, `src/features/tarefas`), etapas e campos configuráveis, relatório PDF/Excel/texto.
+9. **Tarefas** — Quadro compartilhado da equipe (`/tarefas`, `src/features/tarefas`), etapas em `/configuracoes`, exportação PDF/Excel/texto.
 10. **Perfil** — `/perfil` (`src/features/perfil`): contato, cargo e secretarias do usuário.
 
 Menu (`nav-config.ts`): Início (Painel geral, Tarefas), Operação (Processos, Contratos), Cadastros, Sistema (Meu perfil, Auditoria). `/irp` e `/importar-contratos` ficam sob Processos/Contratos (`activeFor`).

@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-18 (menu reorganizado; rotas `/tarefas` e `/perfil`; removidas `/historico` e `/numeracao`; reformulação visual do módulo Tarefas e relatório)  
+**Data:** 2026-11-18 (lista do quadro, filtros múltiplos, exportação de acompanhamento e rota `/configuracoes`)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método
@@ -14,7 +14,7 @@
 
 | Área | Cobertura | Notas |
 |------|-----------|--------|
-| Rotas TanStack | Alta | 20 arquivos + `routeTree.gen.ts` |
+| Rotas TanStack | Alta | 21 arquivos + `routeTree.gen.ts` |
 | Features (5) | Alta (hooks + layout) | Componentes listados por feature; não cada JSX |
 | `src/lib` | Alta | Exports principais indexados |
 | `src/lib/m2a` | Alta | Fluxos proxy/SSE/worker |
@@ -32,7 +32,7 @@
 
 - ~373 arquivos `.ts`/`.tsx`/`.js`/`.sql` (excl. `node_modules`, `dist`)
 - 252 arquivos TS/TSX em `src/`
-- 81 migrações SQL (`20261118120000_perfil_usuario`, `20261118120100_tarefas_kanban`)
+- 84 migrações SQL (`20261118120000_perfil_usuario`, `20261118120100_tarefas_kanban`, `20261118190000_tarefa_identificadores`, `20261118200000_tarefa_tramitacao`)
 
 ## Exclusões (intencionais)
 

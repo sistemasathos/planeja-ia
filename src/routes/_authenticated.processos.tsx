@@ -86,6 +86,9 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export const Route = createFileRoute("/_authenticated/processos")({
  component: Page,
+ validateSearch: (search: Record<string, unknown>): { tarefa?: string } => ({
+ tarefa: typeof search.tarefa === "string" && search.tarefa ? search.tarefa : undefined,
+ }),
  head: () =>
  routeHead({
  path:"/processos",
@@ -164,6 +167,7 @@ type FormValues = z.infer<typeof schema>;
 function Page() {
  const qc = useQueryClient();
  const navigate = useNavigate();
+ const { tarefa: tarefaOrigem } = Route.useSearch();
  const pathname = useRouterState({
  select: (state) => state.location.pathname,
  });
@@ -174,6 +178,9 @@ function Page() {
  const [processosPage, setProcessosPage] = useState(0);
  const [processosPageSize, setProcessosPageSize] = useState(25);
  const [open, setOpen] = useState(false);
+ useEffect(() => {
+ if (tarefaOrigem) setOpen(true);
+ }, [tarefaOrigem]);
  const [editing, setEditing] = useState<any | null>(null);
  const [deleting, setDeleting] = useState<any | null>(null);
  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -275,6 +282,51 @@ function Page() {
  payload,
  });
  notify.success("Processo criado");
+ if (tarefaOrigem) {
+ const vinculo: { processo_id: string; link_url?: string; modalidade?: string } = {
+ processo_id: data.id,
+ };
+ if (data.m2a_url) vinculo.link_url = data.m2a_url;
+ const { data: demanda } = await supabase
+ .from("tarefas")
+ .select("modalidade")
+ .eq("id", tarefaOrigem)
+ .maybeSingle();
+ if (!demanda?.modalidade && data.modalidade) vinculo.modalidade = data.modalidade;
+ const { error: vinculoErro } = await supabase
+ .from("tarefas")
+ .update(vinculo)
+ .eq("id", tarefaOrigem);
+ if (vinculoErro) {
+ notify.error("Processo criado, mas não foi vinculado à demanda", {
+ description: vinculoErro.message,
+ });
+ } else if (data.data_abertura) {
+ const { data: dfd } = await supabase
+ .from("tarefa_documentos")
+ .select("id")
+ .eq("tarefa_id", tarefaOrigem)
+ .eq("chave", "dfd")
+ .maybeSingle();
+ if (dfd) {
+ await supabase.from("tarefa_documentos").update({ data: data.data_abertura }).eq("id", dfd.id);
+ } else {
+ await supabase.from("tarefa_documentos").insert({
+ tarefa_id: tarefaOrigem,
+ chave: "dfd",
+ titulo: "DFD",
+ data: data.data_abertura,
+ posicao: 0,
+ });
+ }
+ }
+ await qc.invalidateQueries({ queryKey: ["tarefas"] });
+ form.reset({ numero_processo:"", objeto:"" });
+ setEditing(null);
+ setOpen(false);
+ void navigate({ to: "/tarefas", search: { tarefa: tarefaOrigem } });
+ return;
+ }
  }
  form.reset({ numero_processo:"", objeto:"" });
  setEditing(null);

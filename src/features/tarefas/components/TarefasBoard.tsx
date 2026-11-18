@@ -42,14 +42,10 @@ type Props = {
   podeEditar: boolean;
   /** Tarefa aberta no painel lateral (destacada no quadro). */
   selecionadaId?: string;
+  lista?: boolean;
   onMover: (input: MoverInput) => void;
   onAbrir: (id: string) => void;
-  onCriar: (etapaId: string, titulo: string) => Promise<void> | void;
-  onEditarEtapa: (etapa: Etapa) => void;
-  onCamposEtapa: (etapa: Etapa) => void;
-  onMoverEtapa: (etapa: Etapa, direcao: -1 | 1) => void;
-  onArquivarEtapa: (etapa: Etapa) => void;
-  onExcluirEtapa: (etapa: Etapa) => void;
+  onCriar: (etapaId: string, titulo: string) => Promise<void | false> | void | false;
 };
 
 export function TarefasBoard({
@@ -59,14 +55,10 @@ export function TarefasBoard({
   ctx,
   podeEditar,
   selecionadaId,
+  lista = false,
   onMover,
   onAbrir,
   onCriar,
-  onEditarEtapa,
-  onCamposEtapa,
-  onMoverEtapa,
-  onArquivarEtapa,
-  onExcluirEtapa,
 }: Props) {
   const [ativaId, setAtivaId] = useState<string | null>(null);
   const [limites, setLimites] = useState<Record<string, number>>({});
@@ -169,9 +161,8 @@ export function TarefasBoard({
             ctx={ctx}
             podeEditar={podeEditar}
             selecionadaId={selecionadaId}
+            lista={lista}
             limite={limiteDe(etapa.id)}
-            primeira={i === 0}
-            ultima={i === etapas.length - 1}
             onAbrir={onAbrir}
             onVerMais={(eid) =>
               setLimites((l) => ({
@@ -180,11 +171,6 @@ export function TarefasBoard({
               }))
             }
             onCriar={onCriar}
-            onEditarEtapa={onEditarEtapa}
-            onCamposEtapa={onCamposEtapa}
-            onMoverEtapa={onMoverEtapa}
-            onArquivarEtapa={onArquivarEtapa}
-            onExcluirEtapa={onExcluirEtapa}
           />
         ))}
       </div>

@@ -47,9 +47,20 @@ type Rascunho = {
   tipo: CampoTipo;
   opcoesTexto: string;
   usa_como_fase: boolean;
+  identificador: boolean;
+  sigla: string;
+  obrigatorio: boolean;
 };
 
-const NOVO: Rascunho = { nome: "", tipo: "texto", opcoesTexto: "", usa_como_fase: false };
+const NOVO: Rascunho = {
+  nome: "",
+  tipo: "texto",
+  opcoesTexto: "",
+  usa_como_fase: false,
+  identificador: false,
+  sigla: "",
+  obrigatorio: false,
+};
 
 function parseOpcoes(texto: string): string[] {
   const vistos = new Set<string>();
@@ -93,6 +104,9 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
         tipo: rascunho.tipo,
         opcoes,
         usa_como_fase: rascunho.usa_como_fase,
+        identificador: rascunho.identificador,
+        sigla: rascunho.sigla,
+        obrigatorio: rascunho.obrigatorio,
         posicao: doEtapa.length,
       });
       setRascunho(null);
@@ -157,7 +171,16 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
             <TkField label="Tipo de informação" htmlFor="campo-tipo">
               <Select
                 value={rascunho.tipo}
-                onValueChange={(v) => setRascunho({ ...rascunho, tipo: v as CampoTipo })}
+                onValueChange={(v) => {
+                  const tipo = v as CampoTipo;
+                  const identificavel = tipo === "texto" || tipo === "numero";
+                  setRascunho({
+                    ...rascunho,
+                    tipo,
+                    identificador: identificavel ? rascunho.identificador : false,
+                    obrigatorio: identificavel ? rascunho.obrigatorio : false,
+                  });
+                }}
               >
                 <SelectTrigger id="campo-tipo" className={tkSelect}>
                   <SelectValue />
@@ -189,13 +212,73 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                     onCheckedChange={(v) => setRascunho({ ...rascunho, usa_como_fase: v === true })}
                   />
                   <span className="space-y-0.5">
-                    <span className="block text-[14px] font-semibold text-(--tk-text)">Usar como fase</span>
+                    <span className="block text-[14px] font-medium text-(--tk-text)">Usar como fase</span>
                     <span className="block text-[12.5px] text-(--tk-text-2)">
                       O valor aparece em destaque no card e no relatório.
                     </span>
                   </span>
                 </label>
               </>
+            )}
+            {(rascunho.tipo === "texto" || rascunho.tipo === "numero") && (
+              <div className="space-y-4 rounded-(--tk-radius-control) border border-(--tk-border) bg-(--tk-panel-muted) p-3.5">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={rascunho.identificador}
+                    onCheckedChange={(v) =>
+                      setRascunho({
+                        ...rascunho,
+                        identificador: v === true,
+                        obrigatorio: v === true ? rascunho.obrigatorio : false,
+                      })
+                    }
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-[14px] font-medium text-(--tk-text)">
+                      Identificador documental
+                    </span>
+                    <span className="block text-[12.5px] font-normal text-(--tk-text-2)">
+                      Número pedido ao mover a tarefa para esta etapa e exibido no card. O valor
+                      permanece quando a tarefa avança.
+                    </span>
+                  </span>
+                </label>
+                {rascunho.identificador && (
+                  <>
+                    <TkField
+                      label="Sigla da etiqueta"
+                      htmlFor="campo-sigla"
+                      hint="Texto curto da etiqueta, como DFD ou ETP. Até 16 caracteres."
+                    >
+                      <input
+                        id="campo-sigla"
+                        maxLength={16}
+                        value={rascunho.sigla}
+                        onChange={(e) => setRascunho({ ...rascunho, sigla: e.target.value })}
+                        className={tkInput}
+                      />
+                    </TkField>
+                    <label className="flex cursor-pointer items-start gap-3">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={rascunho.obrigatorio}
+                        onCheckedChange={(v) =>
+                          setRascunho({ ...rascunho, obrigatorio: v === true })
+                        }
+                      />
+                      <span className="space-y-0.5">
+                        <span className="block text-[14px] font-medium text-(--tk-text)">
+                          Obrigatório para avançar
+                        </span>
+                        <span className="block text-[12.5px] font-normal text-(--tk-text-2)">
+                          Sem este número, a tarefa permanece na etapa anterior.
+                        </span>
+                      </span>
+                    </label>
+                  </>
+                )}
+              </div>
             )}
             <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
               <TkButton variant="secondary" onClick={() => setRascunho(null)}>
@@ -226,6 +309,9 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                     </span>
                     <TkBadge>{CAMPO_TIPOS.find((t) => t.value === c.tipo)?.label ?? c.tipo}</TkBadge>
                     {c.usa_como_fase && <TkBadge tom="info">Fase</TkBadge>}
+                    {c.identificador && (
+                      <TkBadge tom="accent">{c.obrigatorio ? "Obrigatório" : "Identificador"}</TkBadge>
+                    )}
                     <TkIconButton
                       label={`Editar campo ${c.nome}`}
                       size="iconSm"
@@ -236,6 +322,9 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                           tipo: c.tipo,
                           opcoesTexto: c.opcoes.join("\n"),
                           usa_como_fase: c.usa_como_fase,
+                          identificador: c.identificador,
+                          sigla: c.sigla ?? "",
+                          obrigatorio: c.obrigatorio,
                         })
                       }
                     >

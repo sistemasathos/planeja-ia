@@ -16,7 +16,9 @@ import { cn } from "@/lib/utils";
 import {
   diasDesde,
   formatarData,
+  formatarDia,
   formatarValorCampo,
+  siglaIdentificador,
   urlSegura,
   type Campo,
   type ProcessoResumo,
@@ -32,11 +34,12 @@ export type CardContexto = {
   processos: Map<string, ProcessoResumo>;
   /** Campos por etapa (apenas não arquivados), já ordenados. */
   camposPorEtapa: Map<string, Campo[]>;
+  documentosPorTarefa: Map<string, { id: string; chave: string | null; titulo: string; numero: string | null }[]>;
 };
 
 function rotuloSecretarias(t: Tarefa, siglas: Map<string, string>): string {
   if (t.todas_secretarias) return "Todas as secretarias";
-  const lista = t.secretaria_ids.map((id) => siglas.get(id) ?? "?");
+  const lista = [...new Set(t.secretaria_ids.map((id) => siglas.get(id) ?? "?"))];
   if (lista.length === 0) return "Sem secretaria definida";
   if (lista.length <= 3) return lista.join(", ");
   return `${lista.slice(0, 2).join(", ")} e mais ${lista.length - 2}`;
@@ -45,9 +48,9 @@ function rotuloSecretarias(t: Tarefa, siglas: Map<string, string>): string {
 function nomesSecretarias(t: Tarefa, ctx: CardContexto): string {
   if (t.todas_secretarias) return "Todas as secretarias";
   if (t.secretaria_ids.length === 0) return "Sem secretaria definida";
-  return t.secretaria_ids
-    .map((id) => ctx.secretariasNomes.get(id) ?? ctx.siglas.get(id) ?? "?")
-    .join("; ");
+  return [...new Set(
+    t.secretaria_ids.map((id) => ctx.secretariasNomes.get(id) ?? ctx.siglas.get(id) ?? "?"),
+  )].join("; ");
 }
 
 function primeiroNome(nome: string | undefined): string {
@@ -61,6 +64,13 @@ function iniciais(nome: string): string {
   const b = partes.length > 1 ? (partes[partes.length - 1][0] ?? "") : "";
   return (a + b).toUpperCase();
 }
+
+const SIGLA_DOC: Record<string, string> = {
+  dfd: "DFD",
+  pesquisa: "Pesquisa",
+  etp: "ETP",
+  certame: "Certame",
+};
 
 /** dd/mm/aa — a data completa fica no tooltip. */
 function dataCurta(iso: string): string {
@@ -99,7 +109,34 @@ export function TarefaCardView({
   const campos = ctx.camposPorEtapa.get(tarefa.etapa_id) ?? [];
   const fase = campos.find((c) => c.usa_como_fase);
   const faseValor = fase ? tarefa.campos[fase.id] : undefined;
-  const preenchidos = campos.filter((c) => !c.usa_como_fase && tarefa.campos[c.id]?.trim());
+  const preenchidos = campos.filter(
+    (c) => !c.identificador && !c.usa_como_fase && tarefa.campos[c.id]?.trim(),
+  );
+  const dosDocumentos = (ctx.documentosPorTarefa.get(tarefa.id) ?? []).flatMap((d) => {
+    const valor = d.numero?.trim();
+    if (!valor) return [];
+    return [{
+      id: d.id,
+      sigla: (d.chave && SIGLA_DOC[d.chave]) || d.titulo,
+      nome: d.titulo,
+      valor,
+    }];
+  });
+  const siglasDoc = new Set(dosDocumentos.map((d) => d.sigla.toLowerCase()));
+  const identificadores = [
+    ...dosDocumentos,
+    ...[...ctx.camposPorEtapa.values()].flatMap((lista) =>
+      lista.flatMap((c) => {
+        if (!c.identificador) return [];
+        const sigla = siglaIdentificador(c);
+        if (siglasDoc.has(sigla.toLowerCase())) return [];
+        const valor = (tarefa.campos[c.id] ?? "").trim();
+        return valor ? [{ id: c.id, sigla, nome: c.nome, valor }] : [];
+      }),
+    ),
+  ];
+  const identificadoresVisiveis = identificadores.slice(0, 4);
+  const identificadoresOcultos = identificadores.length - identificadoresVisiveis.length;
   const processo = tarefa.processo_id ? ctx.processos.get(tarefa.processo_id) : undefined;
   const link = urlSegura(tarefa.link_url);
   const responsavelNome = tarefa.responsavel_id
@@ -123,12 +160,22 @@ export function TarefaCardView({
     >
       {/* Cabeçalho: situação, data, tempo na etapa, arrastar e expandir */}
       <div className="flex min-w-0 items-center gap-2 text-[12px] text-(--tk-text-2)">
-        <span className={cn("inline-flex shrink-0 items-center gap-1 font-semibold", situacao.texto)}>
+        <span className={cn("inline-flex shrink-0 items-center gap-1 font-medium", situacao.texto)}>
           <SituacaoIcon className="size-3.5" aria-hidden />
           {situacaoLabel(tarefa.situacao)}
         </span>
-        <TkTooltip label={`Criada em ${formatarData(tarefa.created_at)}`}>
-          <span className="min-w-0 truncate tabular-nums">{dataCurta(tarefa.created_at)}</span>
+        <TkTooltip
+          label={
+            tarefa.data_inclusao
+              ? `Incluída em ${formatarDia(tarefa.data_inclusao)}`
+              : `Criada em ${formatarData(tarefa.created_at)}`
+          }
+        >
+          <span className="min-w-0 truncate tabular-nums">
+            {tarefa.data_inclusao
+              ? formatarDia(tarefa.data_inclusao).replace(/\/(\d{2})(\d{2})$/, "/$2")
+              : dataCurta(tarefa.created_at)}
+          </span>
         </TkTooltip>
         <TkTooltip
           label={
@@ -164,6 +211,31 @@ export function TarefaCardView({
         >
           <span className={cn("break-words", !aberto && "line-clamp-3")}>{tarefa.titulo}</span>
         </button>
+        {!aberto && identificadores.length > 0 && (
+          <div className="flex min-w-0 flex-wrap gap-1">
+            {identificadoresVisiveis.map(({ id, sigla, nome, valor }) => (
+              <span
+                key={id}
+                title={nome}
+                className="inline-flex h-5 max-w-full min-w-0 items-center gap-1 rounded border border-(--tk-border) bg-(--tk-panel-muted) px-1.5 text-[11px] font-normal text-(--tk-text-2)"
+              >
+                <span className="shrink-0 font-medium text-(--tk-text)">{sigla}</span>
+                <span className="truncate tabular-nums">{valor}</span>
+              </span>
+            ))}
+            {identificadoresOcultos > 0 && (
+              <span
+                className="inline-flex h-5 items-center px-1 text-[11px] text-(--tk-text-3)"
+                title={identificadores
+                  .slice(identificadoresVisiveis.length)
+                  .map(({ sigla, valor }) => `${sigla} ${valor}`)
+                  .join(" · ")}
+              >
+                +{identificadoresOcultos}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <TkTooltip label={secretariasCompleto}>
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-[13px] text-(--tk-text-2)">
@@ -188,7 +260,7 @@ export function TarefaCardView({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-semibold text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-medium text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
             >
               <ExternalLink className="size-3.5" aria-hidden />
               M2A
@@ -203,7 +275,7 @@ export function TarefaCardView({
               to="/processos/$id"
               params={{ id: tarefa.processo_id }}
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex h-7 min-w-0 max-w-[9.5rem] shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-semibold text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
+              className="inline-flex h-7 min-w-0 max-w-[9.5rem] shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-medium text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
             >
               <FileText className="size-3.5 shrink-0" aria-hidden />
               <span className="truncate tabular-nums">{processo?.numero || "Processo"}</span>
@@ -223,7 +295,7 @@ export function TarefaCardView({
             <TkTooltip label={`Responsável: ${responsavelNome}`}>
               <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-(--tk-text-2)">
                 <span
-                  className="grid size-6 shrink-0 place-items-center rounded-full bg-(--tk-accent-soft) text-[10.5px] font-semibold text-(--tk-accent)"
+                  className="grid size-6 shrink-0 place-items-center rounded-full bg-(--tk-accent-soft) text-[10.5px] font-medium text-(--tk-accent)"
                   aria-hidden
                 >
                   {iniciais(responsavelNome)}
@@ -250,6 +322,9 @@ export function TarefaCardView({
             <Linha rotulo="Tipo" valor={tarefa.tipo} />
             <Linha rotulo="Responsável" valor={responsavelNome || null} vazio="Não definido" />
             <Linha rotulo="Secretaria" valor={secretariasCompleto} />
+            {identificadores.map(({ id, nome, valor }) => (
+              <Linha key={id} rotulo={nome} valor={valor} />
+            ))}
             <Linha
               rotulo="Processo"
               valor={
@@ -267,7 +342,7 @@ export function TarefaCardView({
           </dl>
           {tarefa.observacao && (
             <div className="space-y-1">
-              <p className="text-[12px] font-semibold text-(--tk-text-3)">Observações</p>
+              <p className="text-[12px] font-medium text-(--tk-text-3)">Observações</p>
               <p className="line-clamp-6 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-(--tk-text-2)">
                 {tarefa.observacao}
               </p>

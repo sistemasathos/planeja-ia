@@ -22,7 +22,8 @@ Contagem aproximada: **252** arquivos `.ts`/`.tsx` em `src/`, **373** arquivos f
 | `_authenticated.fornecedores.tsx` | `/fornecedores` | Prepostos/fornecedores |
 | `_authenticated.fiscais.tsx` | `/fiscais` | Catálogo servidores (cargo FISCAL) |
 | `_authenticated.gestores.tsx` | `/gestores` | Catálogo servidores (cargo GESTOR) |
-| `_authenticated.tarefas.tsx` | `/tarefas` | Kanban da equipe (feature `tarefas`); filtros e `tarefa` (painel aberto) em `search` |
+| `_authenticated.tarefas.tsx` | `/tarefas` | Quadro da equipe (feature `tarefas`); `search` guarda filtros em lista, `tarefa` (painel aberto) e `vista=lista` |
+| `_authenticated.configuracoes.tsx` | `/configuracoes` | Etapas do quadro: criar, renomear, cor, ordem, campos, arquivar e restaurar |
 | `_authenticated.perfil.tsx` | `/perfil` | Meu perfil (feature `perfil`) |
 | `_authenticated.logs.tsx` | `/logs` | Audit logs (gestor/admin) |
 
@@ -36,12 +37,12 @@ Cada feature segue **components/** + **hooks/** + `lib.ts` (helpers locais).
 
 | Arquivo | Responsabilidade |
 |---------|------------------|
-| `lib.ts` | Tipos (`ProcessoResumo`, `CriterioFiltro`), posição fracionária, `urlSegura`, cores sugeridas de etapa, `filtrarTarefas` (busca inclui número/objeto do processo) |
+| `lib.ts` | Tipos (`ProcessoResumo`, `CriterioFiltro`), posição fracionária, `urlSegura`, cores sugeridas de etapa, `filtrarTarefas` (busca inclui número/objeto do processo), identificadores por etapa (`identificadoresDaEtapa`, `identificadoresPendentes`, `mesclarIdentificadores`) |
 | `hooks.ts` | Queries/mutations (`TAREFAS_KEYS`), anexos, busca de processos |
 | `relatorio.ts` | `montarRelatorio` (grupos + indicadores + critérios), `relatorioVazio`, `relatorioTexto`, `exportarRelatorioPdf`, `imprimirRelatorio` (A4), `exportarRelatorioExcel`; identificação opcional via `VITE_RELATORIO_ORGAO/SETOR/LOGO_URL` |
 | `tarefas.css` | Tokens visuais do módulo (`--tk-*`, claro/escuro) e `.tk-scroll` |
 | `components/ui.tsx` | Primitivos do módulo: `TkButton`/`TkIconButton`/`TkTooltip`, classes `tkInput`/`tkSelect`/`tkMenu*`, `TkField`, `TkBadge`, `SituacaoBadge`/`SituacaoOpcao`, `TkEmpty`, `TkPanelHeader`, `useConfirmDialog` |
-| `components/` | `TarefasBoard` (DnD, `QUADRO_ALTURA`), `EtapaColumn` (`COLUNA_LARGURA`), `TarefaCard` (`TarefaCardView`), `TarefaSheet`, `EtapaDialog`, `CamposDialog`, `FiltrosBar` (chips de critérios), `ProcessoPicker`, `RelatorioMenu` |
+| `components/` | `TarefasBoard` (DnD, `QUADRO_ALTURA`), `EtapaColumn` (`COLUNA_LARGURA`, faixa da cor da etapa), `TarefaCard` (`TarefaCardView`, etiquetas de identificadores), `TarefaSheet`, `AvancoEtapaDialog`, `EtapaDialog`, `CamposDialog`, `FiltrosBar` (chips de critérios), `ProcessoPicker`, `RelatorioMenu` |
 
 ### `perfil`
 
@@ -187,7 +188,7 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 
 **Operacionais:** `processos`, `contratos`, `contrato_itens`, `contrato_item_dotacoes`, `contrato_atores`, `contrato_documentos`, `secretarias`, `secretaria_contatos`, `secretaria_unidades_equivalentes`, `numeracao`, `profiles` (+ `telefone`, `cargo`, `endereco`), `profile_secretarias`, `user_roles`, `audit_logs`, `trusted_devices`, `app_files`, `fornecedores_prepostos`.
 
-**Tarefas (Kanban):** `tarefa_etapas`, `tarefa_campos`, `tarefas`, `tarefa_secretarias`, `tarefa_anexos` (metadados; arquivos no bucket privado `tarefas-files`), `tarefa_eventos`. RPC `equipe_usuarios()` (id/nome/cargo de ativos). RLS: leitura para autenticados; escrita para admin/gestor/operador (`tarefas_pode_escrever()`).
+**Tarefas (Kanban):** `tarefa_etapas`, `tarefa_campos`, `tarefas` (`data_inclusao`), `tarefa_secretarias`, `tarefa_documentos` (DFD, pesquisa, ETP, certame e dados livres), `tarefa_fases` (fases do julgamento), `tarefa_contratos`, `tarefa_anexos` (metadados; arquivos no bucket privado `tarefas-files`), `tarefa_eventos`. RPC `equipe_usuarios()` (id/nome/cargo de ativos). RLS: leitura para autenticados; escrita para admin/gestor/operador (`tarefas_pode_escrever()`).
 
 **Importação:** `contrato_import_jobs`, `contrato_import_itens`, `contrato_import_dotacoes`.
 

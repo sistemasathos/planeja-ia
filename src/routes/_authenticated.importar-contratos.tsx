@@ -40,6 +40,9 @@ import type { ImportSubmitPayload } from "@/features/importar-contratos/hooks/us
 
 export const Route = createFileRoute("/_authenticated/importar-contratos")({
   component: Page,
+  validateSearch: (search: Record<string, unknown>): { tarefa?: string } => ({
+    tarefa: typeof search.tarefa === "string" && search.tarefa ? search.tarefa : undefined,
+  }),
   head: () =>
     routeHead({
       path: "/importar-contratos",
@@ -52,6 +55,7 @@ export const Route = createFileRoute("/_authenticated/importar-contratos")({
 
 function Page() {
   const navigate = useNavigate();
+  const { tarefa: tarefaOrigem } = Route.useSearch();
   /* --------------------------- Estado do UploadCard --------------------------- */
   const [file, setFile] = useState<File | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -165,6 +169,7 @@ function Page() {
     m2aItens,
     setBusy,
     dataBatchOverride,
+    tarefaId: tarefaOrigem,
   });
 
   const { atualizarItem, atualizarAtaItem, alternarDotacao } = useItemMutations({
