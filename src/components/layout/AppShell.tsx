@@ -222,12 +222,15 @@ export function AppShell({
   subtitle,
   actions,
   onBack,
+  fill = false,
 }: {
   children: ReactNode;
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
   onBack?: () => void;
+  /** A página ocupa a altura restante e não rola o documento. O miolo rola por conta própria. */
+  fill?: boolean;
 }) {
   const { user, loading, signOut, isGestor, isAdmin, roles } = useAuth();
   const { data: nomeUsuario } = useNomeUsuario();
@@ -470,7 +473,13 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-6 lg:px-8 lg:py-8">
+        <div
+          className={
+            fill
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4 lg:px-8"
+              : "flex-1 overflow-y-auto px-5 py-6 lg:px-8 lg:py-8"
+          }
+        >
           {(title || subtitle || actions) && (
             <PageHeader
               title={title ?? ""}

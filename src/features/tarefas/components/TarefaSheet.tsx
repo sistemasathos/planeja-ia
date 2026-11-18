@@ -410,11 +410,9 @@ export function TarefaSheet({
             }
             description={
               <SheetDescription className="text-[13px] text-(--tk-text-2)">
-                {tarefa
-                  ? `Criada em ${formatarDia(tarefa.data_inclusao) || formatarDia(tarefa.created_at)}`
-                  : "Detalhes da tarefa"}
-                {etapaAtual && ` · ${etapaAtual.nome}`}
-                {desabilitado && " · Somente leitura"}
+                {[etapaAtual?.nome, desabilitado ? "Somente leitura" : ""]
+                  .filter(Boolean)
+                  .join(" · ") || "Acompanhamento da demanda"}
               </SheetDescription>
             }
           />
@@ -441,7 +439,7 @@ export function TarefaSheet({
               <h3 className="text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
                 Identificação
               </h3>
-              <TkField label="Título" htmlFor="t-titulo" className="sm:col-span-2">
+              <TkField label="Título" htmlFor="t-titulo">
                 <input
                   id="t-titulo"
                   value={draft.titulo}
@@ -624,7 +622,7 @@ export function TarefaSheet({
               etapaNome={etapaAtual?.nome ?? ""}
               etapas={etapas}
               etapaAtualId={draft.etapa_id}
-              criadaEm={tarefa.created_at}
+              inclusaoEm={tarefa.data_inclusao ?? ""}
               onImportarContratos={() =>
                 void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } })
               }
@@ -729,7 +727,12 @@ export function TarefaSheet({
             )}
 
             <AnexosSection tarefaId={tarefa.id} podeEditar={podeEditar} />
-            <HistoricoSection tarefaId={tarefa.id} etapas={etapas} equipe={equipe} />
+            <HistoricoSection
+              tarefaId={tarefa.id}
+              etapas={etapas}
+              equipe={equipe}
+              dataInclusao={tarefa.data_inclusao}
+            />
           </div>
         )}
 
@@ -1048,7 +1051,7 @@ function descreverEvento(ev: EventoRow, etapas: Etapa[], equipe: MembroEquipe[])
     id ? (equipe.find((m) => m.id === id)?.nome ?? "alguém") : "ninguém";
   switch (ev.tipo) {
     case "criada":
-      return `Tarefa criada em ${etapa(d.etapa_id)}`;
+      return `Incluída em ${etapa(d.etapa_id)}`;
     case "movida":
       return `Movida de ${etapa(d.de)} para ${etapa(d.para)}`;
     case "situacao": {
@@ -1071,10 +1074,12 @@ function HistoricoSection({
   tarefaId,
   etapas,
   equipe,
+  dataInclusao,
 }: {
   tarefaId: string;
   etapas: Etapa[];
   equipe: MembroEquipe[];
+  dataInclusao?: string | null;
 }) {
   const { data: eventos = [] } = useEventos(tarefaId);
   if (eventos.length === 0) return null;
@@ -1094,13 +1099,15 @@ function HistoricoSection({
           <li key={ev.id} className="flex min-w-0 flex-col gap-0.5">
             <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-3">
             <time
-              dateTime={ev.created_at}
+              dateTime={ev.tipo === "criada" && dataInclusao ? dataInclusao : ev.created_at}
               className="shrink-0 tabular-nums font-normal text-(--tk-text-3) sm:w-32"
             >
-              {new Date(ev.created_at).toLocaleString("pt-BR", {
-                dateStyle: "short",
-                timeStyle: "short",
-              })}
+              {ev.tipo === "criada" && dataInclusao
+                ? formatarDia(dataInclusao)
+                : new Date(ev.created_at).toLocaleString("pt-BR", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
             </time>
             <span className="min-w-0 break-words font-normal text-(--tk-text)">
               {descreverEvento(ev, etapas, equipe)}

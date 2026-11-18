@@ -24,7 +24,7 @@ import { EtapaColumn } from "./EtapaColumn";
 import { TarefaCardView, type CardContexto } from "./TarefaCard";
 
 /** Altura do quadro: ocupa o espaço vertical abaixo do cabeçalho e dos filtros. */
-export const QUADRO_ALTURA = "h-[max(460px,calc(100dvh-21rem))]";
+export const QUADRO_ALTURA = "min-h-0 flex-1";
 
 export type MoverInput = {
   id: string;

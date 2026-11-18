@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   diasDesde,
-  formatarData,
   formatarDia,
   formatarValorCampo,
   siglaIdentificador,
@@ -71,13 +70,6 @@ const SIGLA_DOC: Record<string, string> = {
   etp: "ETP",
   certame: "Certame",
 };
-
-/** dd/mm/aa — a data completa fica no tooltip. */
-function dataCurta(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
 
 function textoDias(n: number): string {
   if (n === 0) return "Hoje";
@@ -135,8 +127,6 @@ export function TarefaCardView({
       }),
     ),
   ];
-  const identificadoresVisiveis = identificadores.slice(0, 4);
-  const identificadoresOcultos = identificadores.length - identificadoresVisiveis.length;
   const processo = tarefa.processo_id ? ctx.processos.get(tarefa.processo_id) : undefined;
   const link = urlSegura(tarefa.link_url);
   const responsavelNome = tarefa.responsavel_id
@@ -151,7 +141,7 @@ export function TarefaCardView({
     <article
       aria-label={tarefa.titulo}
       className={cn(
-        "group/card relative flex min-w-0 flex-col gap-2.5 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) p-3 text-(--tk-text) shadow-(--tk-shadow-card) transition-[border-color,background-color,box-shadow]",
+        "group/card relative flex min-w-0 flex-col gap-2 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) p-3 text-(--tk-text) shadow-(--tk-shadow-card) transition-[border-color,background-color,box-shadow]",
         "hover:border-(--tk-border-strong) hover:bg-(--tk-card-hover)",
         selecionada && "border-(--tk-accent)/70 ring-1 ring-(--tk-accent)/40",
         overlay && "cursor-grabbing border-(--tk-accent)/60 shadow-(--tk-shadow-card-hover)",
@@ -164,19 +154,13 @@ export function TarefaCardView({
           <SituacaoIcon className="size-3.5" aria-hidden />
           {situacaoLabel(tarefa.situacao)}
         </span>
-        <TkTooltip
-          label={
-            tarefa.data_inclusao
-              ? `Incluída em ${formatarDia(tarefa.data_inclusao)}`
-              : `Criada em ${formatarData(tarefa.created_at)}`
-          }
-        >
-          <span className="min-w-0 truncate tabular-nums">
-            {tarefa.data_inclusao
-              ? formatarDia(tarefa.data_inclusao).replace(/\/(\d{2})(\d{2})$/, "/$2")
-              : dataCurta(tarefa.created_at)}
-          </span>
-        </TkTooltip>
+        {tarefa.data_inclusao && (
+          <TkTooltip label={`Incluída em ${formatarDia(tarefa.data_inclusao)}`}>
+            <span className="min-w-0 truncate tabular-nums">
+              {formatarDia(tarefa.data_inclusao).replace(/\/(\d{2})(\d{2})$/, "/$2")}
+            </span>
+          </TkTooltip>
+        )}
         <TkTooltip
           label={
             diasNaEtapa === 0 ? "Entrou nesta etapa hoje" : `Há ${textoDias(diasNaEtapa)} nesta etapa`
@@ -211,31 +195,6 @@ export function TarefaCardView({
         >
           <span className={cn("break-words", !aberto && "line-clamp-3")}>{tarefa.titulo}</span>
         </button>
-        {!aberto && identificadores.length > 0 && (
-          <div className="flex min-w-0 flex-wrap gap-1">
-            {identificadoresVisiveis.map(({ id, sigla, nome, valor }) => (
-              <span
-                key={id}
-                title={nome}
-                className="inline-flex h-5 max-w-full min-w-0 items-center gap-1 rounded border border-(--tk-border) bg-(--tk-panel-muted) px-1.5 text-[11px] font-normal text-(--tk-text-2)"
-              >
-                <span className="shrink-0 font-medium text-(--tk-text)">{sigla}</span>
-                <span className="truncate tabular-nums">{valor}</span>
-              </span>
-            ))}
-            {identificadoresOcultos > 0 && (
-              <span
-                className="inline-flex h-5 items-center px-1 text-[11px] text-(--tk-text-3)"
-                title={identificadores
-                  .slice(identificadoresVisiveis.length)
-                  .map(({ sigla, valor }) => `${sigla} ${valor}`)
-                  .join(" · ")}
-              >
-                +{identificadoresOcultos}
-              </span>
-            )}
-          </div>
-        )}
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <TkTooltip label={secretariasCompleto}>
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-[13px] text-(--tk-text-2)">
@@ -295,7 +254,7 @@ export function TarefaCardView({
             <TkTooltip label={`Responsável: ${responsavelNome}`}>
               <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-(--tk-text-2)">
                 <span
-                  className="grid size-6 shrink-0 place-items-center rounded-full bg-(--tk-accent-soft) text-[10.5px] font-medium text-(--tk-accent)"
+                  className="grid size-6 shrink-0 place-items-center rounded-full bg-(--tk-accent-soft) text-[11px] font-medium text-(--tk-accent)"
                   aria-hidden
                 >
                   {iniciais(responsavelNome)}
@@ -318,6 +277,10 @@ export function TarefaCardView({
       {aberto && (
         <div id={detalheId} className="min-w-0 space-y-3 border-t border-(--tk-border) pt-3">
           <dl className="grid min-w-0 grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px]">
+            <Linha
+              rotulo="Inclusão"
+              valor={tarefa.data_inclusao ? formatarDia(tarefa.data_inclusao) : null}
+            />
             <Linha rotulo="Modalidade" valor={tarefa.modalidade} />
             <Linha rotulo="Tipo" valor={tarefa.tipo} />
             <Linha rotulo="Responsável" valor={responsavelNome || null} vazio="Não definido" />

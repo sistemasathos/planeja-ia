@@ -531,10 +531,10 @@ function Page() {
   const erro = etapasQ.error || tarefasQ.error;
 
   return (
-    <AppShell>
+    <AppShell fill>
       <TooltipProvider delayDuration={350}>
-        <div className="flex min-w-0 flex-col gap-5">
-          <header className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          <header className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 max-w-3xl space-y-1.5">
               <h1 className="text-[30px] font-semibold leading-tight tracking-tight text-(--tk-text)">
                 Tarefas
@@ -570,6 +570,7 @@ function Page() {
             </div>
           </header>
 
+          <div className="shrink-0">
           <FiltrosBar
             filtros={filtros}
             onChange={setFiltros}
@@ -582,10 +583,11 @@ function Page() {
             lista={search.vista === "lista"}
             onLista={setLista}
           />
+          </div>
 
           {carregando ? (
             <div
-              className={cn(QUADRO_ALTURA, "flex gap-3 overflow-hidden")}
+              className={cn(QUADRO_ALTURA, "flex min-h-0 flex-1 gap-3 overflow-hidden")}
               role="status"
               aria-label="Carregando tarefas"
             >
@@ -605,6 +607,7 @@ function Page() {
               ))}
             </div>
           ) : erro ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
             <TkEmpty
               icon={Layers}
               title="Não foi possível carregar as tarefas"
@@ -621,12 +624,15 @@ function Page() {
                 </TkButton>
               }
             />
+            </div>
           ) : etapasAtivas.length === 0 ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
             <TkEmpty
               icon={Layers}
               title="Nenhuma etapa configurada"
               description="As etapas do quadro são criadas em Configurações."
             />
+            </div>
           ) : (
             <TarefasBoard
               etapas={etapasAtivas}

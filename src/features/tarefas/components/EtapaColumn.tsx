@@ -3,7 +3,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CircleCheckBig, Inbox, Plus, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LIMITE_POR_COLUNA, corValida, type Etapa, type Tarefa } from "../lib";
+import { LIMITE_POR_COLUNA, corTextoSobre, corValida, type Etapa, type Tarefa } from "../lib";
 import { SortableTarefaCard, type CardContexto } from "./TarefaCard";
 import { TkButton, TkCount, TkTooltip, tkInput } from "./ui";
 
@@ -104,22 +104,67 @@ export function EtapaColumn({
         </TkCount>
       </header>
 
+      {podeEditar && (
+        <div className="shrink-0 px-2.5 pt-2.5">
+          {adicionando ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmar();
+              }}
+              className="flex flex-col gap-2"
+            >
+              <input
+                autoFocus
+                value={titulo}
+                maxLength={300}
+                placeholder="Título da demanda"
+                onChange={(e) => setTitulo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelar();
+                }}
+                aria-label={`Título da nova demanda em ${etapa.nome}`}
+                className={tkInput}
+              />
+              <div className="flex gap-2">
+                <TkButton type="submit" variant="primary" size="sm" disabled={!titulo.trim() || salvando}>
+                  Adicionar
+                </TkButton>
+                <TkButton variant="tertiary" size="sm" onClick={cancelar}>
+                  Cancelar
+                </TkButton>
+              </div>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdicionando(true)}
+              className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-(--tk-radius-card) text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
+              style={{ background: cor, color: corTextoSobre(cor) }}
+            >
+              <Plus className="size-4" aria-hidden />
+              Nova demanda
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         ref={setNodeRef}
         className={cn(
-          "tk-scroll flex min-h-28 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5",
+          "tk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-2.5 pt-2.5",
           isOver && "bg-(--tk-accent-soft)/60",
         )}
       >
         {lista ? (
-          <ul className="flex flex-col">
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {visiveis.map((t) => (
               <li key={t.id}>
                 <button
                   type="button"
                   onClick={() => onAbrir(t.id)}
                   className={cn(
-                    "w-full cursor-pointer rounded-md px-2 py-2 text-left text-[15px] font-semibold leading-snug text-(--tk-text) hover:bg-(--tk-card) hover:text-(--tk-accent)",
+                    "w-full cursor-pointer rounded-(--tk-radius-control) px-2 py-1.5 text-left text-[15px] font-semibold leading-snug text-(--tk-text) hover:bg-(--tk-card) hover:text-(--tk-accent)",
                     t.id === selecionadaId && "bg-(--tk-accent-soft) text-(--tk-accent)",
                   )}
                 >
@@ -151,8 +196,8 @@ export function EtapaColumn({
             )}
             <p className="text-[13px] text-(--tk-text-2)">
               {totalSemFiltro === 0
-                ? "Não há tarefas nesta etapa."
-                : "Nenhuma tarefa desta etapa corresponde aos filtros."}
+                ? "Nenhuma demanda nesta etapa."
+                : "Nenhuma demanda desta etapa corresponde aos filtros."}
             </p>
           </div>
         )}
@@ -167,54 +212,6 @@ export function EtapaColumn({
           </TkButton>
         )}
       </div>
-
-      {podeEditar && (
-        <footer className="shrink-0 border-t border-(--tk-border) p-2.5">
-          {adicionando ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void confirmar();
-              }}
-              className="flex flex-col gap-2"
-            >
-              <input
-                autoFocus
-                value={titulo}
-                maxLength={300}
-                placeholder="Título da tarefa"
-                onChange={(e) => setTitulo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelar();
-                }}
-                aria-label={`Título da nova tarefa em ${etapa.nome}`}
-                className={tkInput}
-              />
-              <div className="flex gap-2">
-                <TkButton
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                  disabled={!titulo.trim() || salvando}
-                >
-                  Adicionar
-                </TkButton>
-                <TkButton variant="tertiary" size="sm" onClick={cancelar}>
-                  Cancelar
-                </TkButton>
-              </div>
-            </form>
-          ) : (
-            <TkButton
-              variant="tertiary"
-              className="w-full justify-start px-3"
-              onClick={() => setAdicionando(true)}
-            >
-              <Plus /> Adicionar tarefa
-            </TkButton>
-          )}
-        </footer>
-      )}
     </section>
   );
 }

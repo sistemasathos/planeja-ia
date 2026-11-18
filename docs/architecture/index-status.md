@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-18 (lista do quadro, filtros múltiplos, exportação de acompanhamento e rota `/configuracoes`)  
+**Data:** 2026-11-18 (quadro de tarefas fixo na altura da tela; cartão sem números até expandir)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

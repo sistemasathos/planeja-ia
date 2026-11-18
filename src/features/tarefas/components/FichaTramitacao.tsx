@@ -30,7 +30,7 @@ type Props = {
   etapaNome: string;
   etapas: Etapa[];
   etapaAtualId: string;
-  criadaEm: string;
+  inclusaoEm?: string | null;
   onImportarContratos: () => void;
   vinculos?: ReactNode;
 };
@@ -41,7 +41,7 @@ export function FichaTramitacao({
   etapaNome,
   etapas,
   etapaAtualId,
-  criadaEm,
+  inclusaoEm,
   onImportarContratos,
   vinculos,
 }: Props) {
@@ -106,7 +106,7 @@ export function FichaTramitacao({
     }
   }
 
-  const marcos = linhaDoTempo(etapas, eventos.data ?? [], etapaAtualId, criadaEm);
+  const marcos = linhaDoTempo(etapas, eventos.data ?? [], etapaAtualId, inclusaoEm ?? "");
 
   return (
     <div className="mt-8 space-y-8 border-t border-(--tk-border) pt-6">
@@ -343,7 +343,7 @@ function linhaDoTempo(
   etapas: Etapa[],
   eventos: { tipo: string; created_at: string; detalhes: unknown }[],
   etapaAtualId: string,
-  criadaEm: string,
+  inclusaoEm: string,
 ) {
   const ordem = [...etapas].filter((e) => !e.arquivada).sort((a, b) => a.posicao - b.posicao);
   const entrada = new Map<string, string>();
@@ -351,14 +351,14 @@ function linhaDoTempo(
   const cron = [...eventos].sort((a, b) => a.created_at.localeCompare(b.created_at));
   for (const ev of cron) {
     const d = (ev.detalhes ?? {}) as { etapa_id?: string; de?: string; para?: string };
-    if (ev.tipo === "criada" && d.etapa_id) entrada.set(d.etapa_id, ev.created_at);
+    if (ev.tipo === "criada" && d.etapa_id && inclusaoEm) entrada.set(d.etapa_id, inclusaoEm);
     if (ev.tipo === "movida" && d.para) {
       if (d.de) saida.set(d.de, ev.created_at);
       if (!entrada.has(d.para)) entrada.set(d.para, ev.created_at);
     }
   }
-  if (ordem[0] && !entrada.has(ordem[0].id)) entrada.set(ordem[0].id, criadaEm);
-  if (!entrada.has(etapaAtualId)) entrada.set(etapaAtualId, criadaEm);
+  if (inclusaoEm && ordem[0] && !entrada.has(ordem[0].id)) entrada.set(ordem[0].id, inclusaoEm);
+  if (inclusaoEm && !entrada.has(etapaAtualId)) entrada.set(etapaAtualId, inclusaoEm);
   return ordem.map((e) => ({
     id: e.id,
     nome: e.nome,
