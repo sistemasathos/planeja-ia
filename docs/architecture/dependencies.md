@@ -102,6 +102,7 @@ flowchart TB
 | `@tanstack/react-router` | Rotas |
 | `exceljs`, `file-saver`, `jszip` | Import/export planilhas |
 | `jspdf`, `jspdf-autotable` | PDFs |
+| `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` | Arrastar e soltar do Kanban (`/tarefas`) |
 | `@radix-ui/*`, `tailwindcss` | UI |
 | `zod`, `@hookform/resolvers` | Validação forms |
 

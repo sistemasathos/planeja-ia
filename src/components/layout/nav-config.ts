@@ -3,15 +3,16 @@ import {
   Building2,
   FileText,
   FileSignature,
-  FileSpreadsheet,
-  History,
   ScrollText,
-  Hash,
-  FileUp,
   Users,
   UserCheck,
   HandCoins,
   ClipboardList,
+  Home,
+  KanbanSquare,
+  Briefcase,
+  UserCircle,
+  Settings,
 } from "lucide-react";
 
 export type NavItem = {
@@ -19,6 +20,8 @@ export type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  /** Rotas extras que mantêm este item ativo (ex.: páginas de importação). */
+  activeFor?: string[];
 };
 
 export type NavGroup = {
@@ -31,25 +34,29 @@ export type NavEntry = NavItem | NavGroup;
 
 export const APP_NAV: NavEntry[] = [
   {
-    label: "Operação",
-    icon: LayoutDashboard,
+    label: "Início",
+    icon: Home,
     items: [
       { to: "/dashboard", label: "Painel geral", icon: LayoutDashboard },
-      { to: "/processos", label: "Processos", icon: FileText },
-      { to: "/contratos", label: "Contratos", icon: FileSignature },
+      { to: "/tarefas", label: "Tarefas", icon: KanbanSquare },
     ],
   },
   {
-    label: "Importação",
-    icon: FileUp,
+    label: "Operação",
+    icon: Briefcase,
     items: [
-      { to: "/irp", label: "Importação de Processos", icon: FileSpreadsheet },
       {
-        to: "/importar-contratos",
-        label: "Importação de Contratos",
-        icon: FileUp,
+        to: "/processos",
+        label: "Processos",
+        icon: FileText,
+        activeFor: ["/irp"],
       },
-      { to: "/historico", label: "Jobs IRP", icon: History },
+      {
+        to: "/contratos",
+        label: "Contratos",
+        icon: FileSignature,
+        activeFor: ["/importar-contratos"],
+      },
     ],
   },
   {
@@ -64,13 +71,18 @@ export const APP_NAV: NavEntry[] = [
   },
   {
     label: "Sistema",
-    icon: ScrollText,
+    icon: Settings,
     items: [
-      { to: "/numeracao", label: "Numeração", icon: Hash },
+      { to: "/perfil", label: "Meu perfil", icon: UserCircle },
       { to: "/logs", label: "Auditoria", icon: ScrollText, adminOnly: true },
     ],
   },
 ];
+
+export function isNavItemActive(item: NavItem, pathname: string): boolean {
+  const paths = [item.to, ...(item.activeFor ?? [])];
+  return paths.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
 
 export function flattenNavPages(isGestor: boolean): NavItem[] {
   const pages: NavItem[] = [];

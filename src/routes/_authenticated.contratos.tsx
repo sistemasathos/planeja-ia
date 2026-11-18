@@ -36,7 +36,6 @@ import {
  DialogContent,
  DialogHeader,
  DialogTitle,
- DialogTrigger,
  DialogFooter,
 } from"@/components/ui/dialog";
 import {
@@ -628,11 +627,28 @@ function Page() {
  });
  }}
  >
- <DialogTrigger asChild>
- <Button size="sm">
- <Plus className="size-4" /> Novo
+ <Button size="sm" asChild>
+ <Link to="/importar-contratos">
+ <Plus className="size-4" /> Novo contrato
+ </Link>
  </Button>
- </DialogTrigger>
+ <DropdownMenu>
+ <DropdownMenuTrigger asChild>
+ <Button
+ size="icon"
+ variant="outline"
+ className="size-8"
+ aria-label="Mais opções de cadastro"
+ >
+ <MoreHorizontal className="size-4" />
+ </Button>
+ </DropdownMenuTrigger>
+ <DropdownMenuContent align="end">
+ <DropdownMenuItem onSelect={() => setOpen(true)}>
+ <Pencil className="size-4" /> Cadastro manual
+ </DropdownMenuItem>
+ </DropdownMenuContent>
+ </DropdownMenu>
  <DialogContent className="max-w-3xl gap-0 p-0">
  <DialogHeader className="border-b border-border/60 bg-muted/40 px-5 py-4 dark:bg-muted/30">
  <DialogTitle>Novo contrato</DialogTitle>

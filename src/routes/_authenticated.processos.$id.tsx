@@ -1,13 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 import {
+  ExternalLink,
   FileSignature,
   FileText,
   FileUp,
   Save,
   Send as SendIcon,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { WorkflowGuide } from "@/components/layout/WorkflowGuide";
@@ -62,6 +64,23 @@ function Page() {
   const contratos = useMemo(() => data?.contratos ?? [], [data?.contratos]);
   const ataItens = useMemo(() => data?.ataItens ?? [], [data?.ataItens]);
   const processo = data?.processo ?? null;
+
+  // Importação IRP que originou este processo (mais recente), se houver.
+  const { data: irpJobId } = useQuery({
+    queryKey: ["processo-irp-job", id],
+    queryFn: async () => {
+      const { data: job, error: jobError } = await supabase
+        .from("irp_jobs")
+        .select("id")
+        .eq("processo_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (jobError) throw jobError;
+      return job?.id ?? null;
+    },
+    staleTime: 60_000,
+  });
 
   const { form, dirty, update, handleSave, handleDelete } = useProcessoForm(
     id,
@@ -169,6 +188,16 @@ function Page() {
         onSave={handleSave}
         onDelete={handleDelete}
       />
+
+      {irpJobId && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/irp" search={{ job: irpJobId }}>
+              <ExternalLink className="size-4" /> Abrir importação IRP
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <WorkflowGuide
         steps={[

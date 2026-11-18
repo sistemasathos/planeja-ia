@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { routeHead } from "@/lib/utils/route-head";
 import { AppShell } from "@/components/layout/AppShell";
@@ -51,6 +51,7 @@ export const Route = createFileRoute("/_authenticated/importar-contratos")({
 });
 
 function Page() {
+  const navigate = useNavigate();
   /* --------------------------- Estado do UploadCard --------------------------- */
   const [file, setFile] = useState<File | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -237,8 +238,9 @@ function Page() {
   /* --------------------------------- Render --------------------------------- */
   return (
     <AppShell
-      title="Importar contratos"
+      title="Novo contrato - importação"
       subtitle="Upload da planilha, revisão e geração em lote"
+      onBack={() => navigate({ to: "/contratos" })}
     >
       <WorkflowGuide
         title="Fluxo da importação"

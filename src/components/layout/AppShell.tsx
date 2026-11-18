@@ -33,7 +33,22 @@ import { exportFullSystem, setupDailyBackup } from "@/lib/system-export";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { APP_NAV } from "@/components/layout/nav-config";
+import { APP_NAV, isNavItemActive } from "@/components/layout/nav-config";
+import { useNomeUsuario } from "@/features/perfil/hooks";
+import { iniciais } from "@/features/perfil/lib";
+
+const NAV_GROUPS_STORAGE_KEY = "planeja:nav-groups:v1";
+
+function loadOpenGroups(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(NAV_GROUPS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 // Suppress unused-import lint while keeping API stable
 void ChevronRight;
@@ -50,7 +65,18 @@ function NavList({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [openGroups, setOpenGroups] =
+    useState<Record<string, boolean>>(loadOpenGroups);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        NAV_GROUPS_STORAGE_KEY,
+        JSON.stringify(openGroups),
+      );
+    } catch {
+      /* armazenamento indisponível: segue sem persistir */
+    }
+  }, [openGroups]);
   const visibleNav = APP_NAV
     .map((entry) => {
       if ("items" in entry) {
@@ -70,9 +96,8 @@ function NavList({
       {visibleNav.map((entry) => {
         if ("items" in entry) {
           const GroupIcon = entry.icon;
-          const activeGroup = entry.items.some(
-            (item) =>
-              pathname === item.to || pathname.startsWith(item.to + "/"),
+          const activeGroup = entry.items.some((item) =>
+            isNavItemActive(item, pathname),
           );
           const groupOpen = openGroups[entry.label] ?? activeGroup;
           const groupLabel = entry.label;
@@ -81,9 +106,9 @@ function NavList({
             // Compact: render icons only, flat list
             return (
               <div key={entry.label} className="flex flex-col gap-1">
-                {entry.items.map(({ to, label, icon: Icon }) => {
-                  const active =
-                    pathname === to || pathname.startsWith(to + "/");
+                {entry.items.map((navItem) => {
+                  const { to, label, icon: Icon } = navItem;
+                  const active = isNavItemActive(navItem, pathname);
                   return (
                     <Link
                       key={to}
@@ -132,9 +157,9 @@ function NavList({
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="ml-[14px] mt-1 flex flex-col gap-0.5 border-l border-sidebar-border/70 pl-2">
-                  {entry.items.map(({ to, label, icon: Icon }) => {
-                    const active =
-                      pathname === to || pathname.startsWith(to + "/");
+                  {entry.items.map((navItem) => {
+                    const { to, label, icon: Icon } = navItem;
+                    const active = isNavItemActive(navItem, pathname);
                     return (
                       <Link
                         key={to}
@@ -205,6 +230,7 @@ export function AppShell({
   onBack?: () => void;
 }) {
   const { user, loading, signOut, isGestor, isAdmin, roles } = useAuth();
+  const { data: nomeUsuario } = useNomeUsuario();
   const navigate = useNavigate();
   const router = useRouterState();
   const pathname = router.location.pathname;
@@ -320,21 +346,29 @@ export function AppShell({
   const renderUserBlock = (compact = false) => (
     <div className="mx-3 mb-3 mt-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-2">
       <div className="flex items-center gap-2.5">
-        <Avatar className="size-9">
-          <AvatarFallback className="bg-gradient-to-br from-accent to-accent-strong text-[11px] font-semibold text-white">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        {!compact && (
-          <div className="flex-1 min-w-0">
-            <div className="truncate text-[12px] font-semibold text-sidebar-foreground">
-              {user.email}
+        <Link
+          to="/perfil"
+          title="Meu perfil"
+          aria-label="Abrir meu perfil"
+          onClick={() => setMobileOpen(false)}
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        >
+          <Avatar className="size-9">
+            <AvatarFallback className="bg-gradient-to-br from-accent to-accent-strong text-[11px] font-semibold text-white">
+              {nomeUsuario ? iniciais(nomeUsuario, user.email) : initials}
+            </AvatarFallback>
+          </Avatar>
+          {!compact && (
+            <div className="flex-1 min-w-0">
+              <div className="truncate text-[12px] font-semibold text-sidebar-foreground">
+                {nomeUsuario || user.email}
+              </div>
+              <div className="text-[10.5px] uppercase tracking-wider text-sidebar-foreground/55">
+                {roles[0] ?? "operador"}
+              </div>
             </div>
-            <div className="text-[10.5px] uppercase tracking-wider text-sidebar-foreground/55">
-              {roles[0] ?? "operador"}
-            </div>
-          </div>
-        )}
+          )}
+        </Link>
         <Button
           variant="ghost"
           size="icon"

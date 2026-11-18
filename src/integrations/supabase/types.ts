@@ -1434,32 +1434,348 @@ export type Database = {
           },
         ]
       }
+      profile_secretarias: {
+        Row: {
+          created_at: string
+          principal: boolean
+          secretaria_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          principal?: boolean
+          secretaria_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          principal?: boolean
+          secretaria_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_secretarias_secretaria_id_fkey"
+            columns: ["secretaria_id"]
+            isOneToOne: false
+            referencedRelation: "secretarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_secretarias_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ativo: boolean
+          cargo: string | null
           created_at: string
           email: string
+          endereco: string | null
           id: string
           nome: string
+          telefone: string | null
           updated_at: string
         }
         Insert: {
           ativo?: boolean
+          cargo?: string | null
           created_at?: string
           email: string
+          endereco?: string | null
           id: string
           nome: string
+          telefone?: string | null
           updated_at?: string
         }
         Update: {
           ativo?: boolean
+          cargo?: string | null
           created_at?: string
           email?: string
+          endereco?: string | null
           id?: string
           nome?: string
+          telefone?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      tarefa_anexos: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          mime_type: string | null
+          original_name: string
+          size_bytes: number | null
+          storage_path: string
+          tarefa_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mime_type?: string | null
+          original_name: string
+          size_bytes?: number | null
+          storage_path: string
+          tarefa_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mime_type?: string | null
+          original_name?: string
+          size_bytes?: number | null
+          storage_path?: string
+          tarefa_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefa_anexos_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarefa_campos: {
+        Row: {
+          arquivado: boolean
+          created_at: string
+          etapa_id: string
+          id: string
+          nome: string
+          opcoes: Json
+          posicao: number
+          tipo: string
+          updated_at: string
+          usa_como_fase: boolean
+        }
+        Insert: {
+          arquivado?: boolean
+          created_at?: string
+          etapa_id: string
+          id?: string
+          nome: string
+          opcoes?: Json
+          posicao?: number
+          tipo: string
+          updated_at?: string
+          usa_como_fase?: boolean
+        }
+        Update: {
+          arquivado?: boolean
+          created_at?: string
+          etapa_id?: string
+          id?: string
+          nome?: string
+          opcoes?: Json
+          posicao?: number
+          tipo?: string
+          updated_at?: string
+          usa_como_fase?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefa_campos_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "tarefa_etapas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarefa_etapas: {
+        Row: {
+          arquivada: boolean
+          cor: string
+          created_at: string
+          finaliza: boolean
+          id: string
+          nome: string
+          posicao: number
+          updated_at: string
+        }
+        Insert: {
+          arquivada?: boolean
+          cor?: string
+          created_at?: string
+          finaliza?: boolean
+          id?: string
+          nome: string
+          posicao?: number
+          updated_at?: string
+        }
+        Update: {
+          arquivada?: boolean
+          cor?: string
+          created_at?: string
+          finaliza?: boolean
+          id?: string
+          nome?: string
+          posicao?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tarefa_eventos: {
+        Row: {
+          created_at: string
+          detalhes: Json
+          id: string
+          tarefa_id: string
+          tipo: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          tarefa_id: string
+          tipo: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          detalhes?: Json
+          id?: string
+          tarefa_id?: string
+          tipo?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefa_eventos_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarefa_secretarias: {
+        Row: {
+          secretaria_id: string
+          tarefa_id: string
+        }
+        Insert: {
+          secretaria_id: string
+          tarefa_id: string
+        }
+        Update: {
+          secretaria_id?: string
+          tarefa_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefa_secretarias_secretaria_id_fkey"
+            columns: ["secretaria_id"]
+            isOneToOne: false
+            referencedRelation: "secretarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefa_secretarias_tarefa_id_fkey"
+            columns: ["tarefa_id"]
+            isOneToOne: false
+            referencedRelation: "tarefas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tarefas: {
+        Row: {
+          campos: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          etapa_desde: string
+          etapa_id: string
+          id: string
+          link_url: string | null
+          modalidade: string | null
+          observacao: string | null
+          posicao: number
+          processo_id: string | null
+          responsavel_id: string | null
+          situacao: string
+          tipo: string | null
+          titulo: string
+          todas_secretarias: boolean
+          updated_at: string
+        }
+        Insert: {
+          campos?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          etapa_desde?: string
+          etapa_id: string
+          id?: string
+          link_url?: string | null
+          modalidade?: string | null
+          observacao?: string | null
+          posicao?: number
+          processo_id?: string | null
+          responsavel_id?: string | null
+          situacao?: string
+          tipo?: string | null
+          titulo: string
+          todas_secretarias?: boolean
+          updated_at?: string
+        }
+        Update: {
+          campos?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          etapa_desde?: string
+          etapa_id?: string
+          id?: string
+          link_url?: string | null
+          modalidade?: string | null
+          observacao?: string | null
+          posicao?: number
+          processo_id?: string | null
+          responsavel_id?: string | null
+          situacao?: string
+          tipo?: string | null
+          titulo?: string
+          todas_secretarias?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefas_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "tarefa_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_processo_id_fkey"
+            columns: ["processo_id"]
+            isOneToOne: false
+            referencedRelation: "processos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       secretaria_contatos: {
         Row: {
@@ -1675,6 +1991,14 @@ export type Database = {
         Returns: string
       }
       dedupe_m2a_itens: { Args: { p_processo_id: string }; Returns: number }
+      equipe_usuarios: {
+        Args: never
+        Returns: {
+          cargo: string | null
+          id: string
+          nome: string
+        }[]
+      }
       ensure_daily_backup_cron: {
         Args: { p_function_url: string; p_schedule?: string; p_secret: string }
         Returns: string

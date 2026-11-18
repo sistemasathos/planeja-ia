@@ -15,15 +15,15 @@ Contagem aproximada: **252** arquivos `.ts`/`.tsx` em `src/`, **373** arquivos f
 | `_authenticated.processos.$id.tsx` | `/processos/$id` | Detalhe → feature `processo-detalhe` |
 | `_authenticated.contratos.tsx` | `/contratos` | Lista contratos |
 | `_authenticated.contratos.$id.tsx` | `/contratos/$id` | Detalhe → `contrato-detalhe` |
-| `_authenticated.importar-contratos.tsx` | `/importar-contratos` | Fluxo importação |
-| `_authenticated.irp.tsx` | `/irp` | Jobs IRP |
+| `_authenticated.importar-contratos.tsx` | `/importar-contratos` | Novo contrato por planilha (botão em `/contratos`); voltar → `/contratos` |
+| `_authenticated.irp.tsx` | `/irp` | Novo processo por IRP (botão em `/processos`); `?job=` reabre uma importação; voltar → `/processos` |
 | `_authenticated.irp-colunas.tsx` | `/irp-colunas` | Config colunas IRP / órgãos M2A |
 | `_authenticated.secretarias.tsx` | `/secretarias` | CRUD secretarias |
-| `_authenticated.numeracao.tsx` | `/numeracao` | Sync numeração M2A |
 | `_authenticated.fornecedores.tsx` | `/fornecedores` | Prepostos/fornecedores |
 | `_authenticated.fiscais.tsx` | `/fiscais` | Catálogo servidores (cargo FISCAL) |
 | `_authenticated.gestores.tsx` | `/gestores` | Catálogo servidores (cargo GESTOR) |
-| `_authenticated.historico.tsx` | `/historico` | Jobs IRP (processamentos anteriores) |
+| `_authenticated.tarefas.tsx` | `/tarefas` | Kanban da equipe (feature `tarefas`); filtros e `tarefa` (painel aberto) em `search` |
+| `_authenticated.perfil.tsx` | `/perfil` | Meu perfil (feature `perfil`) |
 | `_authenticated.logs.tsx` | `/logs` | Audit logs (gestor/admin) |
 
 Gerado: `src/routeTree.gen.ts` (não editar manualmente).
@@ -31,6 +31,19 @@ Gerado: `src/routeTree.gen.ts` (não editar manualmente).
 ## `src/features/` — domínio por vertical
 
 Cada feature segue **components/** + **hooks/** + `lib.ts` (helpers locais).
+
+### `tarefas`
+
+| Arquivo | Responsabilidade |
+|---------|------------------|
+| `lib.ts` | Tipos, posição fracionária, `urlSegura`, cores, `filtrarTarefas` |
+| `hooks.ts` | Queries/mutations (`TAREFAS_KEYS`), anexos, busca de processos |
+| `relatorio.ts` | `montarRelatorio`, PDF, Excel, texto WhatsApp |
+| `components/` | `TarefasBoard` (DnD), `EtapaColumn`, `TarefaCard`, `TarefaSheet`, `EtapaDialog`, `CamposDialog`, `FiltrosBar`, `ProcessoPicker`, `RelatorioMenu` |
+
+### `perfil`
+
+`hooks.ts` (`usePerfil`, `useSalvarPerfil`, `useNomeUsuario`, `useSecretariasOpcoes`) e `lib.ts` (schema zod, `maskTelefone`, `iniciais`). Componente compartilhado: `components/layout/SecretariasMultiSelect.tsx`.
 
 ### `contrato-detalhe`
 
@@ -170,7 +183,9 @@ Componentes notáveis: `EnvioM2ASection`, abas atores/documentos/itens.
 
 ## Postgres (via `types.ts`) — tabelas
 
-**Operacionais:** `processos`, `contratos`, `contrato_itens`, `contrato_item_dotacoes`, `contrato_atores`, `contrato_documentos`, `secretarias`, `secretaria_contatos`, `secretaria_unidades_equivalentes`, `numeracao`, `profiles`, `user_roles`, `audit_logs`, `trusted_devices`, `app_files`, `fornecedores_prepostos`.
+**Operacionais:** `processos`, `contratos`, `contrato_itens`, `contrato_item_dotacoes`, `contrato_atores`, `contrato_documentos`, `secretarias`, `secretaria_contatos`, `secretaria_unidades_equivalentes`, `numeracao`, `profiles` (+ `telefone`, `cargo`, `endereco`), `profile_secretarias`, `user_roles`, `audit_logs`, `trusted_devices`, `app_files`, `fornecedores_prepostos`.
+
+**Tarefas (Kanban):** `tarefa_etapas`, `tarefa_campos`, `tarefas`, `tarefa_secretarias`, `tarefa_anexos` (metadados; arquivos no bucket privado `tarefas-files`), `tarefa_eventos`. RPC `equipe_usuarios()` (id/nome/cargo de ativos). RLS: leitura para autenticados; escrita para admin/gestor/operador (`tarefas_pode_escrever()`).
 
 **Importação:** `contrato_import_jobs`, `contrato_import_itens`, `contrato_import_dotacoes`.
 

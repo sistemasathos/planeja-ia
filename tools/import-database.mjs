@@ -22,13 +22,14 @@ import path from "node:path";
 import process from "node:process";
 import { createClient } from "@supabase/supabase-js";
 
-const GROUP_FILES = ["base.json", "processos.json", "contratos.json", "m2a.json"];
+const GROUP_FILES = ["base.json", "processos.json", "contratos.json", "m2a.json", "tarefas.json"];
 
 /** Mesma ordem de system-export / database-backup.json (pais antes dos filhos). */
 const DEFAULT_RESTORE_ORDER = [
   "profiles",
   "user_roles",
   "secretarias",
+  "profile_secretarias",
   "secretaria_contatos",
   "fornecedores_prepostos",
   "numeracao",
@@ -45,6 +46,12 @@ const DEFAULT_RESTORE_ORDER = [
   "m2a_itens",
   "m2a_contratos_snapshot",
   "m2a_envio_preferencias",
+  "tarefa_etapas",
+  "tarefa_campos",
+  "tarefas",
+  "tarefa_secretarias",
+  "tarefa_anexos",
+  "tarefa_eventos",
 ];
 
 const CHUNK_SIZE = 500;
@@ -52,6 +59,8 @@ const CHUNK_SIZE = 500;
 /** Colunas do UNIQUE / PK usadas no upsert (evita duplicate key em re-import). */
 const UPSERT_ON_CONFLICT = {
   user_roles: "user_id,role",
+  profile_secretarias: "user_id,secretaria_id",
+  tarefa_secretarias: "tarefa_id,secretaria_id",
   /** PK estável no backup; upsert em m2a_id trocava id_local e quebrava FK em m2a_servidor_unidade. */
   m2a_unidades_gestoras: "id_local",
   m2a_servidores: "id_local",

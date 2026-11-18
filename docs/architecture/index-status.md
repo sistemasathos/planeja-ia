@@ -1,13 +1,13 @@
 # Status da indexação
 
-**Data:** 2026-11-16 (IRP: gerenciadora por coluna; criar unidade de fornecimento se faltar)  
+**Data:** 2026-11-18 (menu reorganizado; rotas `/tarefas` e `/perfil`; removidas `/historico` e `/numeracao`)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método
 
 1. Inventário via glob (`src/`, `supabase/`, `vps-worker/`, raiz).
 2. Assinaturas e rotas via `grep` (exports, `createFileRoute`, endpoints Fastify).
-3. Schema Postgres via `src/integrations/supabase/types.ts` (gerado).
+3. Schema Postgres via `src/integrations/supabase/types.ts` (gerado; tabelas `tarefa*`, `profile_secretarias` e RPC `equipe_usuarios` adicionadas à mão em 2026-11-18 — regenerar com `supabase gen types` quando possível).
 4. Leitura integral **apenas** em: `package.json`, `vite.config.ts`, `main.tsx`, `_authenticated.tsx`, `__root.tsx` (parcial), `client.ts`, trechos M2A/worker/edge, `server.js`, amostra rotas worker.
 
 ## Cobertura verificada
@@ -32,7 +32,7 @@
 
 - ~373 arquivos `.ts`/`.tsx`/`.js`/`.sql` (excl. `node_modules`, `dist`)
 - 252 arquivos TS/TSX em `src/`
-- 79 migrações SQL
+- 81 migrações SQL (`20261118120000_perfil_usuario`, `20261118120100_tarefas_kanban`)
 
 ## Exclusões (intencionais)
 

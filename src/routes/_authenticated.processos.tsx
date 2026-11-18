@@ -36,7 +36,6 @@ import {
  DialogContent,
  DialogHeader,
  DialogTitle,
- DialogTrigger,
  DialogFooter,
 } from"@/components/ui/dialog";
 import {
@@ -398,11 +397,28 @@ function Page() {
  <Download className="size-4" /> CSV
  </Button>
  <Dialog open={open} onOpenChange={handleOpenChange}>
- <DialogTrigger asChild>
- <Button size="sm">
- <Plus className="size-4" /> Novo
+ <Button size="sm" asChild>
+ <Link to="/irp" search={{ job: undefined }}>
+ <Plus className="size-4" /> Novo processo
+ </Link>
  </Button>
- </DialogTrigger>
+ <DropdownMenu>
+ <DropdownMenuTrigger asChild>
+ <Button
+ size="icon"
+ variant="outline"
+ className="size-8"
+ aria-label="Mais opções de cadastro"
+ >
+ <MoreHorizontal className="size-4" />
+ </Button>
+ </DropdownMenuTrigger>
+ <DropdownMenuContent align="end">
+ <DropdownMenuItem onSelect={() => handleOpenChange(true)}>
+ <Pencil className="size-4" /> Cadastro manual
+ </DropdownMenuItem>
+ </DropdownMenuContent>
+ </DropdownMenu>
  <DialogContent className="max-w-2xl overflow-hidden p-0">
  <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-5 ">
  <DialogTitle>

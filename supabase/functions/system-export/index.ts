@@ -14,6 +14,7 @@ const TABLE_GROUPS: Record<string, string[]> = {
     "profiles",
     "user_roles",
     "secretarias",
+    "profile_secretarias",
     "secretaria_contatos",
     "fornecedores_prepostos",
     "numeracao",
@@ -35,6 +36,14 @@ const TABLE_GROUPS: Record<string, string[]> = {
     "m2a_contratos_snapshot",
     "m2a_envio_preferencias",
   ],
+  tarefas: [
+    "tarefa_etapas",
+    "tarefa_campos",
+    "tarefas",
+    "tarefa_secretarias",
+    "tarefa_anexos",
+    "tarefa_eventos",
+  ],
 };
 
 const RESTORE_ORDER = [
@@ -42,6 +51,7 @@ const RESTORE_ORDER = [
   ...TABLE_GROUPS.processos,
   ...TABLE_GROUPS.contratos,
   ...TABLE_GROUPS.m2a,
+  ...TABLE_GROUPS.tarefas,
 ];
 
 // Buckets ignorados na exportação (histórico/anexos pesados que não precisam

@@ -57,7 +57,7 @@ sequenceDiagram
 
 ## 6. Importação de contratos (planilha)
 
-1. Upload na rota `/importar-contratos`.
+1. Upload na rota `/importar-contratos` (aberta por **Novo contrato** em `/contratos`; o cadastro manual fica em “⋯ → Cadastro manual”).
 2. `parseContratoXlsx` / `agruparContratos` (`lib/contratoImport.ts`) no client; XLSX lido via Web Worker (`readXlsxMatrix`).
 3. Persistência em `contrato_import_jobs`, itens e dotações.
 4. Validação pré-geração (`useValidacaoPreGeracao`) cruza dados M2A (atas, fornecedor).
@@ -65,7 +65,7 @@ sequenceDiagram
 
 ## 7. Fluxo IRP
 
-1. Upload planilha → `analisar()` (`lib/irp.ts`); leitura XLSX no Web Worker.
+1. **Novo processo** em `/processos` abre `/irp`. Upload planilha → `analisar()` (`lib/irp.ts`); leitura XLSX no Web Worker. O histórico de importações fica na lateral de `/irp`; o detalhe do processo tem “Abrir importação IRP” (`irp_jobs.processo_id`).
 2. Job salvo em `irp_jobs` + secretarias/unidades associadas.
 3. Export por secretária (`gerarPlanilhaSecretaria`).
 4. Envio ao M2A: `criarProcessoSrpM2A` ou fluxo comum conforme tipo; progresso via listeners em `client.ts`.
@@ -74,7 +74,7 @@ sequenceDiagram
 ## 8. Numeração de contratos
 
 - **Local (Postgres):** RPC `next_contrato_number*`, `lib/contrato-numbering.ts` — sequência por secretária/base.
-- **Portal:** página `/numeracao` + `requestNumeracaoSync` ↔ worker `GET /numeracao` + persistência em tabela `numeracao`.
+- **Portal:** a página `/numeracao` foi removida. `requestNumeracaoSync` (`lib/m2a/client.ts`) e o worker `GET /numeracao` permanecem sem tela. A tabela `numeracao` continua usada por `contratos.tsx`, `useAutorizarGeracao.ts` e pelas RPC `next_contrato_number*`.
 
 ## 9. Relatórios e pauta consolidada
 
@@ -95,6 +95,20 @@ sequenceDiagram
 
 - Tabela `audit_logs`; UI `/logs`.
 - Função `logAudit` para eventos aplicacionais.
+- A rota `/historico` (Jobs IRP) foi removida; `irp_jobs` segue acessível por `/irp?job=`.
+
+## 13. Tarefas (Kanban)
+
+- `/tarefas`: `useEtapas/useCampos/useTarefas` (React Query; refetch ao focar + a cada 60s). Quadro `@dnd-kit` (mouse, toque e teclado; arraste pela alça). Movimento otimista com rollback (`useMoverTarefa`); ordem por `posicao` fracionária (`posicaoEntre`, renumeração da coluna se o intervalo < 1e-6).
+- Edição no painel lateral (`TarefaSheet`) com checagem de conflito por `updated_at` (`ConflitoTarefaError`). Triggers gravam `tarefa_eventos` (criada, movida, situação, responsável, excluída) e `etapa_desde`.
+- Campos por etapa (`tarefa_campos`; valores em `tarefas.campos` por id do campo; `usa_como_fase` destaca no card e no relatório). Etapa só é excluída se vazia; arquivar também exige coluna vazia.
+- Links só `http/https` (`urlSegura`, `rel="noopener noreferrer"`). Anexos: bucket `tarefas-files`, até 25 MB, URL assinada de 60s.
+- Relatório (`relatorio.ts`, `RelatorioMenu`): PDF (`jspdf-autotable`), Excel (`exceljs`) e texto para WhatsApp, agrupados por etapa, respeitando filtros; libs carregadas sob demanda.
+- Backup/restore: grupo `tarefas` em `system-export` e `tools/import-database.mjs`.
+
+## 14. Meu perfil
+
+- `/perfil`: `profiles` (nome, telefone, cargo, endereço) + `profile_secretarias`. Trigger `profiles_protect_sensitive_columns` impede não-admin de alterar `ativo`/`email`. Troca de senha envia e-mail pelo fluxo `/reset-password`. O bloco do usuário no menu mostra o nome e leva a `/perfil`.
 
 ## Integrações externas
 
