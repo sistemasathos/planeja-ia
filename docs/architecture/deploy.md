@@ -32,6 +32,8 @@ Ajuste o nome `planeja-ia` se preferir; o workflow usa `/${{ github.event.reposi
 | `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | anon/public key (Dashboard → Settings → API) |
 
+Opcional (Settings → Secrets and variables → Actions → **Variables**): `VITE_RELATORIO_ORGAO`, `VITE_RELATORIO_SETOR`, `VITE_RELATORIO_LOGO_URL` (PNG/JPEG) — identificação no cabeçalho do relatório de Tarefas; sem valor, não é impressa.
+
 ### 3. Ativar GitHub Pages
 
 Settings → **Pages** → Source: **GitHub Actions** (não “Deploy from branch”).

@@ -1,6 +1,13 @@
 import { useState } from "react";
-import { ClipboardCopy, FileSpreadsheet, FileText, Loader2, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  ChevronDown,
+  ClipboardCopy,
+  FileBarChart,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Printer,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,13 +17,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import {
   exportarRelatorioExcel,
   exportarRelatorioPdf,
+  imprimirRelatorio,
   montarRelatorio,
   relatorioTexto,
+  relatorioVazio,
   type ContextoRelatorio,
 } from "../relatorio";
+import { TkButton, tkMenu, tkMenuItem, tkMenuLabel, tkMenuSeparator } from "./ui";
+
+type Formato = "imprimir" | "pdf" | "xlsx" | "texto";
 
 type Props = {
   contexto: ContextoRelatorio;
@@ -24,26 +37,24 @@ type Props = {
 };
 
 export function RelatorioMenu({ contexto, desabilitado }: Props) {
-  const [gerando, setGerando] = useState<"pdf" | "xlsx" | null>(null);
+  const [gerando, setGerando] = useState<Formato | null>(null);
 
-  async function executar(tipo: "pdf" | "xlsx" | "texto") {
-    const grupos = montarRelatorio(contexto);
-    if (grupos.every((g) => g.linhas.length === 0)) {
+  async function executar(tipo: Formato) {
+    const relatorio = montarRelatorio(contexto);
+    if (relatorioVazio(relatorio)) {
       notify.info("Nenhuma tarefa para o relatório com os filtros atuais");
       return;
     }
     try {
       if (tipo === "texto") {
-        const texto = relatorioTexto(grupos, contexto.filtrosDescricao);
-        await navigator.clipboard.writeText(texto);
-        notify.success("Resumo copiado", {
-          description: "Cole no WhatsApp ou e-mail.",
-        });
+        await navigator.clipboard.writeText(relatorioTexto(relatorio));
+        notify.success("Resumo copiado", { description: "Cole no WhatsApp ou e-mail." });
         return;
       }
       setGerando(tipo);
-      if (tipo === "pdf") await exportarRelatorioPdf(grupos, contexto.filtrosDescricao);
-      else await exportarRelatorioExcel(grupos, contexto.filtrosDescricao);
+      if (tipo === "imprimir") await imprimirRelatorio(relatorio);
+      else if (tipo === "pdf") await exportarRelatorioPdf(relatorio);
+      else await exportarRelatorioExcel(relatorio);
     } catch (e) {
       notify.error("Não foi possível gerar o relatório", {
         description: e instanceof Error ? e.message : undefined,
@@ -53,27 +64,34 @@ export function RelatorioMenu({ contexto, desabilitado }: Props) {
     }
   }
 
+  const filtrado = contexto.criterios.length > 0;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" size="sm" variant="outline" disabled={desabilitado || gerando !== null}>
-          {gerando ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}
-          Relatório
-        </Button>
+        <TkButton variant="secondary" disabled={desabilitado || gerando !== null}>
+          {gerando ? <Loader2 className="animate-spin" /> : <FileBarChart />}
+          {gerando ? "Gerando..." : "Relatório"}
+          <ChevronDown className="text-(--tk-text-3)" />
+        </TkButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-          Respeita os filtros atuais
+      <DropdownMenuContent align="end" className={cn(tkMenu, "w-80")}>
+        <DropdownMenuLabel className={tkMenuLabel}>
+          {filtrado ? "Considera os filtros aplicados no quadro" : "Considera todas as tarefas do quadro"}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void executar("pdf")}>
-          <FileText className="size-4" /> PDF por etapa
+        <DropdownMenuSeparator className={tkMenuSeparator} />
+        <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("imprimir")}>
+          <Printer /> Imprimir (A4)
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void executar("xlsx")}>
-          <FileSpreadsheet className="size-4" /> Excel por etapa
+        <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("pdf")}>
+          <FileText /> Baixar PDF por etapa
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void executar("texto")}>
-          <ClipboardCopy className="size-4" /> Copiar texto (WhatsApp)
+        <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("xlsx")}>
+          <FileSpreadsheet /> Baixar planilha Excel por etapa
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className={tkMenuSeparator} />
+        <DropdownMenuItem className={tkMenuItem} onSelect={() => void executar("texto")}>
+          <ClipboardCopy /> Copiar resumo em texto (WhatsApp)
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

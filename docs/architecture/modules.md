@@ -36,14 +36,16 @@ Cada feature segue **components/** + **hooks/** + `lib.ts` (helpers locais).
 
 | Arquivo | Responsabilidade |
 |---------|------------------|
-| `lib.ts` | Tipos, posição fracionária, `urlSegura`, cores, `filtrarTarefas` |
+| `lib.ts` | Tipos (`ProcessoResumo`, `CriterioFiltro`), posição fracionária, `urlSegura`, cores sugeridas de etapa, `filtrarTarefas` (busca inclui número/objeto do processo) |
 | `hooks.ts` | Queries/mutations (`TAREFAS_KEYS`), anexos, busca de processos |
-| `relatorio.ts` | `montarRelatorio`, PDF, Excel, texto WhatsApp |
-| `components/` | `TarefasBoard` (DnD), `EtapaColumn`, `TarefaCard`, `TarefaSheet`, `EtapaDialog`, `CamposDialog`, `FiltrosBar`, `ProcessoPicker`, `RelatorioMenu` |
+| `relatorio.ts` | `montarRelatorio` (grupos + indicadores + critérios), `relatorioVazio`, `relatorioTexto`, `exportarRelatorioPdf`, `imprimirRelatorio` (A4), `exportarRelatorioExcel`; identificação opcional via `VITE_RELATORIO_ORGAO/SETOR/LOGO_URL` |
+| `tarefas.css` | Tokens visuais do módulo (`--tk-*`, claro/escuro) e `.tk-scroll` |
+| `components/ui.tsx` | Primitivos do módulo: `TkButton`/`TkIconButton`/`TkTooltip`, classes `tkInput`/`tkSelect`/`tkMenu*`, `TkField`, `TkBadge`, `SituacaoBadge`/`SituacaoOpcao`, `TkEmpty`, `TkPanelHeader`, `useConfirmDialog` |
+| `components/` | `TarefasBoard` (DnD, `QUADRO_ALTURA`), `EtapaColumn` (`COLUNA_LARGURA`), `TarefaCard` (`TarefaCardView`), `TarefaSheet`, `EtapaDialog`, `CamposDialog`, `FiltrosBar` (chips de critérios), `ProcessoPicker`, `RelatorioMenu` |
 
 ### `perfil`
 
-`hooks.ts` (`usePerfil`, `useSalvarPerfil`, `useNomeUsuario`, `useSecretariasOpcoes`) e `lib.ts` (schema zod, `maskTelefone`, `iniciais`). Componente compartilhado: `components/layout/SecretariasMultiSelect.tsx`.
+`hooks.ts` (`usePerfil`, `useSalvarPerfil`, `useNomeUsuario`, `useSecretariasOpcoes`) e `lib.ts` (schema zod, `maskTelefone`, `iniciais`). Componente compartilhado: `components/layout/SecretariasMultiSelect.tsx` (aceita `triggerClassName`/`contentClassName`/`itemClassName`). `components/ui/sheet.tsx` e `dialog.tsx` aceitam `hideClose` para cabeçalhos com botão de fechar próprio.
 
 ### `contrato-detalhe`
 

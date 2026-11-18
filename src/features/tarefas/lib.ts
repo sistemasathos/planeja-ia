@@ -23,6 +23,8 @@ export type Tarefa = Omit<TarefaRow, "campos" | "situacao"> & {
 
 export type MembroEquipe = { id: string; nome: string; cargo: string | null };
 
+export type ProcessoResumo = { numero: string; objeto: string };
+
 export const CAMPO_TIPOS: { value: CampoTipo; label: string }[] = [
   { value: "texto", label: "Texto" },
   { value: "numero", label: "Número" },
@@ -31,14 +33,10 @@ export const CAMPO_TIPOS: { value: CampoTipo; label: string }[] = [
   { value: "lista", label: "Lista de opções" },
 ];
 
-export const SITUACOES: {
-  value: Situacao;
-  label: string;
-  dot: string;
-}[] = [
-  { value: "ok", label: "Em dia", dot: "bg-emerald-500" },
-  { value: "atencao", label: "Atenção", dot: "bg-amber-500" },
-  { value: "travada", label: "Travada", dot: "bg-red-500" },
+export const SITUACOES: { value: Situacao; label: string }[] = [
+  { value: "ok", label: "Em dia" },
+  { value: "atencao", label: "Atenção" },
+  { value: "travada", label: "Travada" },
 ];
 
 export const MODALIDADES_SUGERIDAS = [
@@ -64,17 +62,17 @@ export const TAREFAS_BUCKET = "tarefas-files";
 export const PASSO_POSICAO = 1000;
 
 export const COR_PADRAO = "#64748b";
+/** Cores de etapa sem verde/âmbar/vermelho, reservados às situações. */
 export const CORES_SUGERIDAS = [
   "#6366f1",
+  "#3b82f6",
   "#0ea5e9",
+  "#06b6d4",
   "#14b8a6",
-  "#10b981",
-  "#84cc16",
-  "#f59e0b",
-  "#f97316",
-  "#ef4444",
-  "#ec4899",
   "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
   "#64748b",
 ];
 
@@ -234,10 +232,16 @@ export function filtrosAtivos(f: FiltrosTarefas): number {
   return Object.values(f).filter((v) => v.trim() !== "").length;
 }
 
+/** Critério de filtro aplicado, já com rótulo legível (chips e relatório). */
+export type CriterioFiltro = { chave: keyof FiltrosTarefas; rotulo: string; valor: string };
+
+/**
+ * @param processoTexto processo_id → texto pesquisável (nº e objeto do processo)
+ */
 export function filtrarTarefas(
   tarefas: Tarefa[],
   f: FiltrosTarefas,
-  processoNumeros: Map<string, string>,
+  processoTexto: Map<string, string>,
 ): Tarefa[] {
   const q = semAcento(f.q.trim());
   return tarefas.filter((t) => {
@@ -261,7 +265,7 @@ export function filtrarTarefas(
           t.observacao ?? "",
           t.modalidade ?? "",
           t.tipo ?? "",
-          t.processo_id ? (processoNumeros.get(t.processo_id) ?? "") : "",
+          t.processo_id ? (processoTexto.get(t.processo_id) ?? "") : "",
           ...Object.values(t.campos),
         ].join(" "),
       );

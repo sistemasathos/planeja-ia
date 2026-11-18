@@ -103,7 +103,8 @@ sequenceDiagram
 - Edição no painel lateral (`TarefaSheet`) com checagem de conflito por `updated_at` (`ConflitoTarefaError`). Triggers gravam `tarefa_eventos` (criada, movida, situação, responsável, excluída) e `etapa_desde`.
 - Campos por etapa (`tarefa_campos`; valores em `tarefas.campos` por id do campo; `usa_como_fase` destaca no card e no relatório). Etapa só é excluída se vazia; arquivar também exige coluna vazia.
 - Links só `http/https` (`urlSegura`, `rel="noopener noreferrer"`). Anexos: bucket `tarefas-files`, até 25 MB, URL assinada de 60s.
-- Relatório (`relatorio.ts`, `RelatorioMenu`): PDF (`jspdf-autotable`), Excel (`exceljs`) e texto para WhatsApp, agrupados por etapa, respeitando filtros; libs carregadas sob demanda.
+- Filtros (`FiltrosBar`): busca com debounce (título, número e objeto do processo) + modalidade, tipo, secretaria, responsável e situação; critérios ativos viram chips removíveis e são repassados ao relatório.
+- Relatório (`relatorio.ts`, `RelatorioMenu`): imprimir (A4), PDF (`jspdf-autotable`), Excel (`exceljs`) e texto para WhatsApp, agrupados por etapa, respeitando filtros; libs carregadas sob demanda. Indicadores: total, em andamento, concluídas (etapas com `finaliza`), em atenção e travadas — não há conceito de prazo/atraso. Cabeçalho institucional só com `VITE_RELATORIO_*` configuradas.
 - Backup/restore: grupo `tarefas` em `system-export` e `tools/import-database.mjs`.
 
 ## 14. Meu perfil

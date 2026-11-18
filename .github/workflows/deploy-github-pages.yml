@@ -32,6 +32,9 @@ jobs:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_RELATORIO_ORGAO: ${{ vars.VITE_RELATORIO_ORGAO }}
+          VITE_RELATORIO_SETOR: ${{ vars.VITE_RELATORIO_SETOR }}
+          VITE_RELATORIO_LOGO_URL: ${{ vars.VITE_RELATORIO_LOGO_URL }}
         run: bun run build
 
       - name: SPA fallback for client-side routes

@@ -1,17 +1,12 @@
 import { useEffect, useState } from "react";
-import { Archive, Pencil, Plus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Archive, ArrowLeft, ListChecks, Pencil, Plus } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -19,10 +14,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import { useArquivarCampo, useSalvarCampo } from "../hooks";
 import { CAMPO_TIPOS, type Campo, type CampoTipo, type Etapa } from "../lib";
+import {
+  TkBadge,
+  TkButton,
+  TkField,
+  TkIconButton,
+  TkPanelHeader,
+  tkDialog,
+  tkDialogDescription,
+  tkDialogTitle,
+  tkInput,
+  tkMenu,
+  tkMenuItem,
+  tkSelect,
+  tkTextarea,
+  useConfirmDialog,
+} from "./ui";
 
 type Props = {
   etapa: Etapa | null;
@@ -56,6 +67,7 @@ function parseOpcoes(texto: string): string[] {
 export function CamposDialog({ etapa, campos, onFechar }: Props) {
   const salvar = useSalvarCampo();
   const arquivar = useArquivarCampo();
+  const { confirm, dialog } = useConfirmDialog();
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
 
   useEffect(() => {
@@ -92,10 +104,11 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
   }
 
   async function remover(c: Campo) {
-    const ok = await notify.confirmAsync(
-      `Arquivar o campo "${c.nome}"? Os valores já preenchidos são mantidos.`,
-      { confirmLabel: "Arquivar" },
-    );
+    const ok = await confirm({
+      title: "Arquivar campo?",
+      description: `O campo "${c.nome}" deixa de aparecer no formulário. Os valores já preenchidos são mantidos.`,
+      confirmLabel: "Arquivar campo",
+    });
     if (!ok) return;
     try {
       await arquivar.mutateAsync({ id: c.id, arquivado: true });
@@ -108,104 +121,114 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
 
   return (
     <Dialog open={Boolean(etapa)} onOpenChange={(o) => !o && onFechar()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Campos da etapa {etapa?.nome}</DialogTitle>
-          <DialogDescription>
-            Campos próprios desta etapa (ex.: nº da cotação, data do certame, fase do
-            julgamento).
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent hideClose className={cn(tkDialog, "max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)] sm:max-w-lg")}>
+        <TkPanelHeader
+          onClose={onFechar}
+          title={
+            <DialogTitle className={tkDialogTitle}>
+              {rascunho ? (rascunho.id ? "Editar campo" : "Novo campo") : `Campos da etapa ${etapa?.nome ?? ""}`}
+            </DialogTitle>
+          }
+          description={
+            <DialogDescription className={tkDialogDescription}>
+              Informações próprias desta etapa, como número da cotação, data do certame ou fase do julgamento.
+            </DialogDescription>
+          }
+        />
 
         {rascunho ? (
           <form
-            className="space-y-3"
+            className="tk-scroll -mx-1 min-h-0 space-y-5 overflow-y-auto px-1"
             onSubmit={(e) => {
               e.preventDefault();
               void confirmar();
             }}
           >
-            <div className="space-y-1.5">
-              <Label htmlFor="campo-nome">Nome do campo</Label>
-              <Input
+            <TkField label="Nome do campo" htmlFor="campo-nome">
+              <input
                 id="campo-nome"
                 autoFocus
                 maxLength={60}
                 value={rascunho.nome}
                 onChange={(e) => setRascunho({ ...rascunho, nome: e.target.value })}
+                className={tkInput}
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tipo</Label>
+            </TkField>
+            <TkField label="Tipo de informação" htmlFor="campo-tipo">
               <Select
                 value={rascunho.tipo}
                 onValueChange={(v) => setRascunho({ ...rascunho, tipo: v as CampoTipo })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="campo-tipo" className={tkSelect}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className={tkMenu}>
                   {CAMPO_TIPOS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
+                    <SelectItem key={t.value} value={t.value} className={tkMenuItem}>
                       {t.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </TkField>
             {rascunho.tipo === "lista" && (
               <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="campo-opcoes">Opções (uma por linha)</Label>
-                  <Textarea
+                <TkField label="Opções" htmlFor="campo-opcoes" hint="Uma opção por linha (até 50).">
+                  <textarea
                     id="campo-opcoes"
                     rows={5}
                     value={rascunho.opcoesTexto}
-                    onChange={(e) =>
-                      setRascunho({ ...rascunho, opcoesTexto: e.target.value })
-                    }
+                    onChange={(e) => setRascunho({ ...rascunho, opcoesTexto: e.target.value })}
+                    className={tkTextarea}
                   />
-                </div>
-                <label className="flex items-center gap-2 text-sm">
+                </TkField>
+                <label className="flex cursor-pointer items-start gap-3 rounded-(--tk-radius-control) border border-(--tk-border) bg-(--tk-panel-muted) p-3.5">
                   <Checkbox
+                    className="mt-0.5"
                     checked={rascunho.usa_como_fase}
-                    onCheckedChange={(v) =>
-                      setRascunho({ ...rascunho, usa_como_fase: v === true })
-                    }
+                    onCheckedChange={(v) => setRascunho({ ...rascunho, usa_como_fase: v === true })}
                   />
-                  Usar como fase (destaque no card e agrupamento no relatório)
+                  <span className="space-y-0.5">
+                    <span className="block text-[14px] font-semibold text-(--tk-text)">Usar como fase</span>
+                    <span className="block text-[12.5px] text-(--tk-text-2)">
+                      O valor aparece em destaque no card e no relatório.
+                    </span>
+                  </span>
                 </label>
               </>
             )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={() => setRascunho(null)}>
-                Voltar
-              </Button>
-              <Button type="submit" disabled={!rascunho.nome.trim() || salvar.isPending}>
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+              <TkButton variant="secondary" onClick={() => setRascunho(null)}>
+                <ArrowLeft /> Voltar
+              </TkButton>
+              <TkButton
+                type="submit"
+                variant="primary"
+                disabled={!rascunho.nome.trim() || salvar.isPending}
+              >
                 Salvar campo
-              </Button>
+              </TkButton>
             </div>
           </form>
         ) : (
-          <div className="space-y-3">
+          <div className="flex min-h-0 flex-col gap-4">
             {doEtapa.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-                Nenhum campo nesta etapa.
-              </p>
+              <div className="flex flex-col items-center gap-2 rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-4 py-8 text-center">
+                <ListChecks className="size-5 text-(--tk-text-3)" aria-hidden />
+                <p className="text-[13px] text-(--tk-text-2)">Esta etapa ainda não tem campos próprios.</p>
+              </div>
             ) : (
-              <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+              <ul className="tk-scroll min-h-0 divide-y divide-(--tk-border) overflow-y-auto rounded-(--tk-radius-control) border border-(--tk-border)">
                 {doEtapa.map((c) => (
-                  <li key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate font-medium">{c.nome}</span>
-                    <Badge variant="outline" className="font-normal">
-                      {CAMPO_TIPOS.find((t) => t.value === c.tipo)?.label}
-                    </Badge>
-                    {c.usa_como_fase && <Badge variant="secondary">Fase</Badge>}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-7"
-                      aria-label={`Editar campo ${c.nome}`}
+                  <li key={c.id} className="flex min-w-0 items-center gap-2 py-2 pl-3.5 pr-2">
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium" title={c.nome}>
+                      {c.nome}
+                    </span>
+                    <TkBadge>{CAMPO_TIPOS.find((t) => t.value === c.tipo)?.label ?? c.tipo}</TkBadge>
+                    {c.usa_como_fase && <TkBadge tom="info">Fase</TkBadge>}
+                    <TkIconButton
+                      label={`Editar campo ${c.nome}`}
+                      size="iconSm"
                       onClick={() =>
                         setRascunho({
                           id: c.id,
@@ -216,26 +239,27 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                         })
                       }
                     >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-7"
-                      aria-label={`Arquivar campo ${c.nome}`}
+                      <Pencil />
+                    </TkIconButton>
+                    <TkIconButton
+                      label={`Arquivar campo ${c.nome}`}
+                      size="iconSm"
                       onClick={() => void remover(c)}
                     >
-                      <Archive className="size-3.5" />
-                    </Button>
+                      <Archive />
+                    </TkIconButton>
                   </li>
                 ))}
               </ul>
             )}
-            <Button type="button" size="sm" onClick={() => setRascunho(NOVO)}>
-              <Plus className="size-4" /> Novo campo
-            </Button>
+            <div className="flex justify-end">
+              <TkButton variant="primary" onClick={() => setRascunho(NOVO)}>
+                <Plus /> Novo campo
+              </TkButton>
+            </div>
           </div>
         )}
+        {dialog}
       </DialogContent>
     </Dialog>
   );

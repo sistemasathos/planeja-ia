@@ -3,44 +3,75 @@ import { Link } from "@tanstack/react-router";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Building2,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
   FileText,
   GripVertical,
+  Hourglass,
   Paperclip,
+  UserRound,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  SITUACOES,
   diasDesde,
   formatarData,
   formatarValorCampo,
   urlSegura,
   type Campo,
+  type ProcessoResumo,
   type Tarefa,
 } from "../lib";
+import { SITUACAO_VISUAL, TkBadge, TkIconButton, TkTooltip, situacaoLabel } from "./ui";
 
 export type CardContexto = {
   siglas: Map<string, string>;
+  /** secretaria_id → "SIGLA — nome" */
+  secretariasNomes: Map<string, string>;
   equipe: Map<string, string>;
-  processos: Map<string, string>;
+  processos: Map<string, ProcessoResumo>;
   /** Campos por etapa (apenas não arquivados), já ordenados. */
   camposPorEtapa: Map<string, Campo[]>;
 };
 
 function rotuloSecretarias(t: Tarefa, siglas: Map<string, string>): string {
-  if (t.todas_secretarias) return "Todas";
+  if (t.todas_secretarias) return "Todas as secretarias";
   const lista = t.secretaria_ids.map((id) => siglas.get(id) ?? "?");
-  if (lista.length === 0) return "Sem secretaria";
-  if (lista.length === 1) return lista[0];
+  if (lista.length === 0) return "Sem secretaria definida";
   if (lista.length <= 3) return lista.join(", ");
-  return `Diversas (${lista.length})`;
+  return `${lista.slice(0, 2).join(", ")} e mais ${lista.length - 2}`;
+}
+
+function nomesSecretarias(t: Tarefa, ctx: CardContexto): string {
+  if (t.todas_secretarias) return "Todas as secretarias";
+  if (t.secretaria_ids.length === 0) return "Sem secretaria definida";
+  return t.secretaria_ids
+    .map((id) => ctx.secretariasNomes.get(id) ?? ctx.siglas.get(id) ?? "?")
+    .join("; ");
 }
 
 function primeiroNome(nome: string | undefined): string {
   return (nome ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+function iniciais(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  const a = partes[0][0] ?? "";
+  const b = partes.length > 1 ? (partes[partes.length - 1][0] ?? "") : "";
+  return (a + b).toUpperCase();
+}
+
+/** dd/mm/aa — a data completa fica no tooltip. */
+function dataCurta(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function textoDias(n: number): string {
+  if (n === 0) return "Hoje";
+  return `${n} ${n === 1 ? "dia" : "dias"}`;
 }
 
 type ViewProps = {
@@ -49,143 +80,222 @@ type ViewProps = {
   onAbrir?: (id: string) => void;
   handle?: React.ReactNode;
   overlay?: boolean;
+  selecionada?: boolean;
+  arrastando?: boolean;
 };
 
-export function TarefaCardView({ tarefa, ctx, onAbrir, handle, overlay }: ViewProps) {
+export function TarefaCardView({
+  tarefa,
+  ctx,
+  onAbrir,
+  handle,
+  overlay,
+  selecionada,
+  arrastando,
+}: ViewProps) {
   const [aberto, setAberto] = useState(false);
-  const situacao = SITUACOES.find((s) => s.value === tarefa.situacao) ?? SITUACOES[0];
+  const situacao = SITUACAO_VISUAL[tarefa.situacao];
+  const SituacaoIcon = situacao.icon;
   const campos = ctx.camposPorEtapa.get(tarefa.etapa_id) ?? [];
   const fase = campos.find((c) => c.usa_como_fase);
   const faseValor = fase ? tarefa.campos[fase.id] : undefined;
-  const preenchidos = campos.filter(
-    (c) => !c.usa_como_fase && tarefa.campos[c.id]?.trim(),
-  );
-  const numeroProcesso = tarefa.processo_id
-    ? ctx.processos.get(tarefa.processo_id)
-    : undefined;
+  const preenchidos = campos.filter((c) => !c.usa_como_fase && tarefa.campos[c.id]?.trim());
+  const processo = tarefa.processo_id ? ctx.processos.get(tarefa.processo_id) : undefined;
   const link = urlSegura(tarefa.link_url);
-  const responsavel = tarefa.responsavel_id
-    ? primeiroNome(ctx.equipe.get(tarefa.responsavel_id))
+  const responsavelNome = tarefa.responsavel_id
+    ? (ctx.equipe.get(tarefa.responsavel_id) ?? "")
     : "";
   const diasNaEtapa = diasDesde(tarefa.etapa_desde);
+  const secretariasCurto = rotuloSecretarias(tarefa, ctx.siglas);
+  const secretariasCompleto = nomesSecretarias(tarefa, ctx);
+  const detalheId = `card-detalhes-${tarefa.id}`;
 
   return (
-    <div
+    <article
+      aria-label={tarefa.titulo}
       className={cn(
-        "group rounded-lg border border-border/70 bg-card p-2.5 text-sm shadow-sm transition-shadow",
-        overlay && "rotate-1 shadow-lg ring-2 ring-primary/30",
+        "group/card relative flex min-w-0 flex-col gap-2.5 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) p-3 text-(--tk-text) shadow-(--tk-shadow-card) transition-[border-color,background-color,box-shadow]",
+        "hover:border-(--tk-border-strong) hover:bg-(--tk-card-hover)",
+        selecionada && "border-(--tk-accent)/70 ring-1 ring-(--tk-accent)/40",
+        overlay && "cursor-grabbing border-(--tk-accent)/60 shadow-(--tk-shadow-card-hover)",
+        arrastando && "border-dashed opacity-45",
       )}
     >
-      <div className="flex items-start gap-1.5">
-        {handle}
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span
-              className={cn("size-2 shrink-0 rounded-full", situacao.dot)}
-              title={situacao.label}
-              aria-label={`Situação: ${situacao.label}`}
-            />
-            <span>{formatarData(tarefa.created_at)}</span>
-            <span aria-hidden>·</span>
-            <span title="Tempo nesta etapa">{diasNaEtapa}d na etapa</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onAbrir?.(tarefa.id)}
-            className="block w-full text-left font-medium leading-snug outline-none hover:underline focus-visible:underline"
-          >
-            <span className={cn(!aberto && "line-clamp-2")}>{tarefa.titulo}</span>
-          </button>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            <Badge variant="outline" className="max-w-full truncate px-1.5 py-0 text-[10.5px] font-normal">
-              {rotuloSecretarias(tarefa, ctx.siglas)}
-            </Badge>
-            {faseValor && (
-              <Badge variant="secondary" className="px-1.5 py-0 text-[10.5px]">
-                {faseValor}
-              </Badge>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setAberto((v) => !v)}
-          aria-expanded={aberto}
-          aria-label={aberto ? "Recolher card" : "Expandir card"}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+      {/* Cabeçalho: situação, data, tempo na etapa, arrastar e expandir */}
+      <div className="flex min-w-0 items-center gap-2 text-[12px] text-(--tk-text-2)">
+        <span className={cn("inline-flex shrink-0 items-center gap-1 font-semibold", situacao.texto)}>
+          <SituacaoIcon className="size-3.5" aria-hidden />
+          {situacaoLabel(tarefa.situacao)}
+        </span>
+        <TkTooltip label={`Criada em ${formatarData(tarefa.created_at)}`}>
+          <span className="min-w-0 truncate tabular-nums">{dataCurta(tarefa.created_at)}</span>
+        </TkTooltip>
+        <TkTooltip
+          label={
+            diasNaEtapa === 0 ? "Entrou nesta etapa hoje" : `Há ${textoDias(diasNaEtapa)} nesta etapa`
+          }
         >
-          {aberto ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-        </button>
+          <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
+            <Hourglass className="size-3.5 text-(--tk-text-3)" aria-hidden />
+            {diasNaEtapa}d
+          </span>
+        </TkTooltip>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {handle}
+          <TkIconButton
+            label={aberto ? "Recolher detalhes" : "Expandir detalhes"}
+            size="iconSm"
+            className="size-7"
+            aria-expanded={aberto}
+            aria-controls={detalheId}
+            onClick={() => setAberto((v) => !v)}
+          >
+            <ChevronDown className={cn("transition-transform", aberto && "rotate-180")} />
+          </TkIconButton>
+        </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <div className="flex items-center gap-2">
-          {link && (
+      {/* Centro: título e abrangência */}
+      <div className="min-w-0 space-y-1.5">
+        <button
+          type="button"
+          onClick={() => onAbrir?.(tarefa.id)}
+          className="block w-full cursor-pointer rounded-md text-left text-[15px] font-semibold leading-snug text-(--tk-text) outline-none hover:text-(--tk-accent) focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
+        >
+          <span className={cn("break-words", !aberto && "line-clamp-3")}>{tarefa.titulo}</span>
+        </button>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <TkTooltip label={secretariasCompleto}>
+            <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-[13px] text-(--tk-text-2)">
+              <Building2 className="size-3.5 shrink-0 text-(--tk-text-3)" aria-hidden />
+              <span className="truncate">{secretariasCurto}</span>
+            </span>
+          </TkTooltip>
+          {faseValor && (
+            <TkBadge tom="info" title={fase ? `${fase.nome}: ${faseValor}` : faseValor}>
+              {faseValor}
+            </TkBadge>
+          )}
+        </div>
+      </div>
+
+      {/* Rodapé: atalhos e responsável */}
+      <div className="flex min-w-0 items-center gap-1.5 border-t border-(--tk-border) pt-2.5">
+        {link && (
+          <TkTooltip label="Abrir link no M2A (nova aba)">
             <a
               href={link}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-0.5 hover:text-foreground"
-              title="Abrir link (M2A)"
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-semibold text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
             >
-              <ExternalLink className="size-3.5" /> M2A
+              <ExternalLink className="size-3.5" aria-hidden />
+              M2A
             </a>
-          )}
-          {numeroProcesso !== undefined && tarefa.processo_id && (
+          </TkTooltip>
+        )}
+        {tarefa.processo_id && (
+          <TkTooltip
+            label={processo ? `Processo ${processo.numero || "sem número"} — ${processo.objeto}` : "Abrir processo vinculado"}
+          >
             <Link
               to="/processos/$id"
               params={{ id: tarefa.processo_id }}
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-0.5 hover:text-foreground"
-              title="Abrir processo vinculado"
+              className="inline-flex h-7 min-w-0 max-w-[9.5rem] shrink-0 items-center gap-1 rounded-md border border-(--tk-border) px-2 text-[12px] font-semibold text-(--tk-text-2) hover:border-(--tk-border-strong) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
             >
-              <FileText className="size-3.5" /> {numeroProcesso || "Processo"}
+              <FileText className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate tabular-nums">{processo?.numero || "Processo"}</span>
             </Link>
-          )}
-          {tarefa.anexos_count > 0 && (
-            <span className="inline-flex items-center gap-0.5" title="Anexos">
-              <Paperclip className="size-3.5" /> {tarefa.anexos_count}
+          </TkTooltip>
+        )}
+        {tarefa.anexos_count > 0 && (
+          <TkTooltip label={`${tarefa.anexos_count} anexo(s)`}>
+            <span className="inline-flex h-7 shrink-0 items-center gap-1 px-1 text-[12px] text-(--tk-text-2)">
+              <Paperclip className="size-3.5" aria-hidden />
+              {tarefa.anexos_count}
             </span>
+          </TkTooltip>
+        )}
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 pl-1">
+          {responsavelNome ? (
+            <TkTooltip label={`Responsável: ${responsavelNome}`}>
+              <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-(--tk-text-2)">
+                <span
+                  className="grid size-6 shrink-0 place-items-center rounded-full bg-(--tk-accent-soft) text-[10.5px] font-semibold text-(--tk-accent)"
+                  aria-hidden
+                >
+                  {iniciais(responsavelNome)}
+                </span>
+                <span className="truncate">{primeiroNome(responsavelNome)}</span>
+              </span>
+            </TkTooltip>
+          ) : (
+            <TkTooltip label="Sem responsável definido">
+              <span className="grid size-6 shrink-0 place-items-center rounded-full border border-dashed border-(--tk-border-strong) text-(--tk-text-3)">
+                <UserRound className="size-3.5" aria-hidden />
+                <span className="sr-only">Sem responsável</span>
+              </span>
+            </TkTooltip>
           )}
         </div>
-        {responsavel && (
-          <span className="max-w-[40%] truncate rounded-full bg-muted px-2 py-0.5 text-foreground/80" title="Responsável">
-            {responsavel}
-          </span>
-        )}
       </div>
 
+      {/* Detalhes expandidos */}
       {aberto && (
-        <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2 text-[12px]">
-          {tarefa.modalidade && (
+        <div id={detalheId} className="min-w-0 space-y-3 border-t border-(--tk-border) pt-3">
+          <dl className="grid min-w-0 grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px]">
             <Linha rotulo="Modalidade" valor={tarefa.modalidade} />
-          )}
-          {tarefa.tipo && <Linha rotulo="Tipo" valor={tarefa.tipo} />}
-          {preenchidos.map((c) => (
+            <Linha rotulo="Tipo" valor={tarefa.tipo} />
+            <Linha rotulo="Responsável" valor={responsavelNome || null} vazio="Não definido" />
+            <Linha rotulo="Secretaria" valor={secretariasCompleto} />
             <Linha
-              key={c.id}
-              rotulo={c.nome}
-              valor={formatarValorCampo(c, tarefa.campos[c.id])}
+              rotulo="Processo"
+              valor={
+                processo
+                  ? `${processo.numero || "Sem número"} — ${processo.objeto}`
+                  : tarefa.processo_id
+                    ? "Processo vinculado"
+                    : null
+              }
+              vazio="Não vinculado"
             />
-          ))}
+            {preenchidos.map((c) => (
+              <Linha key={c.id} rotulo={c.nome} valor={formatarValorCampo(c, tarefa.campos[c.id])} />
+            ))}
+          </dl>
           {tarefa.observacao && (
-            <p className="line-clamp-4 whitespace-pre-wrap text-muted-foreground">
-              {tarefa.observacao}
-            </p>
+            <div className="space-y-1">
+              <p className="text-[12px] font-semibold text-(--tk-text-3)">Observações</p>
+              <p className="line-clamp-6 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-(--tk-text-2)">
+                {tarefa.observacao}
+              </p>
+            </div>
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
-function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Linha({
+  rotulo,
+  valor,
+  vazio = "Não informado",
+}: {
+  rotulo: string;
+  valor: string | null | undefined;
+  vazio?: string;
+}) {
+  const v = (valor ?? "").trim();
   return (
-    <div className="flex gap-2">
-      <span className="shrink-0 text-muted-foreground">{rotulo}:</span>
-      <span className="min-w-0 break-words">{valor}</span>
-    </div>
+    <>
+      <dt className="truncate text-(--tk-text-3)">{rotulo}</dt>
+      <dd className={cn("min-w-0 break-words", v ? "text-(--tk-text)" : "text-(--tk-text-3)")}>
+        {v || vazio}
+      </dd>
+    </>
   );
 }
 
@@ -194,9 +304,10 @@ type SortableProps = {
   ctx: CardContexto;
   onAbrir: (id: string) => void;
   podeEditar: boolean;
+  selecionada: boolean;
 };
 
-function SortableTarefaCardBase({ tarefa, ctx, onAbrir, podeEditar }: SortableProps) {
+function SortableTarefaCardBase({ tarefa, ctx, onAbrir, podeEditar, selecionada }: SortableProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({
       id: tarefa.id,
@@ -205,27 +316,27 @@ function SortableTarefaCardBase({ tarefa, ctx, onAbrir, podeEditar }: SortablePr
     });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(isDragging && "opacity-40")}
-    >
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
       <TarefaCardView
         tarefa={tarefa}
         ctx={ctx}
         onAbrir={onAbrir}
+        selecionada={selecionada}
+        arrastando={isDragging}
         handle={
           podeEditar ? (
-            <button
-              type="button"
-              ref={setActivatorNodeRef}
-              {...attributes}
-              {...listeners}
-              aria-label={`Mover tarefa: ${tarefa.titulo}`}
-              className="mt-0.5 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-foreground active:cursor-grabbing"
-            >
-              <GripVertical className="size-4" />
-            </button>
+            <TkTooltip label="Arrastar para mover">
+              <button
+                type="button"
+                ref={setActivatorNodeRef}
+                {...attributes}
+                {...listeners}
+                aria-label={`Mover tarefa: ${tarefa.titulo}`}
+                className="grid size-7 cursor-grab touch-none place-items-center rounded-lg text-(--tk-text-3) hover:bg-(--tk-neutral-bg) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45 active:cursor-grabbing"
+              >
+                <GripVertical className="size-4" aria-hidden />
+              </button>
+            </TkTooltip>
           ) : null
         }
       />

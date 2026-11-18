@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, Loader2, Save, Trash2, Upload, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  ChevronRight,
+  Copy,
+  Download,
+  ExternalLink,
+  File as FileIcon,
+  Loader2,
+  Save,
+  Trash2,
+  TriangleAlert,
+  Upload,
+  X,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,17 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { SecretariasMultiSelect } from "@/components/layout/SecretariasMultiSelect";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/utils";
 import {
   ConflitoTarefaError,
   abrirAnexo,
@@ -40,9 +43,27 @@ import {
   type Etapa,
   type EventoRow,
   type MembroEquipe,
+  type Situacao,
   type Tarefa,
 } from "../lib";
 import { ProcessoPicker } from "./ProcessoPicker";
+import {
+  SituacaoOpcao,
+  TkButton,
+  TkField,
+  TkIconButton,
+  TkPanelHeader,
+  TkSection,
+  TkTooltip,
+  situacaoLabel,
+  tkButton,
+  tkInput,
+  tkMenu,
+  tkMenuItem,
+  tkSelect,
+  tkTextarea,
+  useConfirmDialog,
+} from "./ui";
 
 type Draft = {
   titulo: string;
@@ -120,9 +141,11 @@ export function TarefaSheet({
 }: Props) {
   const atualizar = useAtualizarTarefa();
   const excluir = useExcluirTarefa();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [draft, setDraft] = useState<Draft | null>(null);
   const baseRef = useRef<{ id: string; updatedAt: string } | null>(null);
   const originalRef = useRef<Draft | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [externo, setExterno] = useState(false);
 
   // Inicializa ao abrir outra tarefa; sincroniza quando não há edição pendente.
@@ -159,12 +182,10 @@ export function TarefaSheet({
     () => etapas.filter((e) => !e.arquivada || e.id === draft?.etapa_id),
     [etapas, draft?.etapa_id],
   );
-  const camposAtivos = useMemo(
-    () => campos.filter((c) => !c.arquivado),
-    [campos],
-  );
+  const camposAtivos = useMemo(() => campos.filter((c) => !c.arquivado), [campos]);
   const camposDaEtapa = camposAtivos.filter((c) => c.etapa_id === draft?.etapa_id);
   const camposOutras = camposAtivos.filter((c) => c.etapa_id !== draft?.etapa_id);
+  const etapaAtual = etapas.find((e) => e.id === draft?.etapa_id);
 
   function set<K extends keyof Draft>(k: K, v: Draft[K]) {
     setDraft((d) => (d ? { ...d, [k]: v } : d));
@@ -255,8 +276,11 @@ export function TarefaSheet({
 
   async function remover() {
     if (!tarefa) return;
-    const ok = await notify.confirmAsync(`Excluir a tarefa "${tarefa.titulo}"?`, {
-      confirmLabel: "Excluir",
+    const ok = await confirm({
+      title: "Excluir tarefa?",
+      description: `"${tarefa.titulo}" deixará de aparecer no quadro e nos relatórios.`,
+      confirmLabel: "Excluir tarefa",
+      destructive: true,
     });
     if (!ok) return;
     try {
@@ -270,221 +294,318 @@ export function TarefaSheet({
     }
   }
 
-  async function tentarFechar(aberto: boolean) {
-    if (aberto) return;
+  async function tentarFechar() {
     if (sujo) {
-      const ok = await notify.confirmAsync("Descartar as alterações não salvas?", {
+      const ok = await confirm({
+        title: "Descartar alterações?",
+        description: "As alterações feitas nesta tarefa ainda não foram salvas.",
         confirmLabel: "Descartar",
         cancelLabel: "Continuar editando",
+        destructive: true,
       });
       if (!ok) return;
     }
     onFechar();
   }
 
+  async function copiarLink() {
+    const link = urlSegura(draft?.link_url);
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      notify.success("Link copiado");
+    } catch {
+      notify.error("Não foi possível copiar o link");
+    }
+  }
+
   const desabilitado = !podeEditar;
+  const linkValido = urlSegura(draft?.link_url);
 
   return (
-    <Sheet open={Boolean(tarefa)} onOpenChange={(o) => void tentarFechar(o)}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <SheetHeader className="border-b border-border/60 px-5 py-4 text-left">
-          <SheetTitle className="pr-6 leading-snug">{tarefa?.titulo ?? "Tarefa"}</SheetTitle>
-          <SheetDescription>
-            {tarefa
-              ? `Criada em ${formatarData(tarefa.created_at)}`
-              : "Detalhes da tarefa"}
-            {desabilitado && " · somente leitura"}
-          </SheetDescription>
-        </SheetHeader>
+    <Sheet open={Boolean(tarefa)} onOpenChange={(o) => !o && void tentarFechar()}>
+      <SheetContent
+        ref={contentRef}
+        hideClose
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          contentRef.current?.focus();
+        }}
+        className="flex w-full flex-col gap-0 overflow-hidden border-(--tk-border-strong) bg-(--tk-panel) p-0 text-(--tk-text) shadow-(--tk-shadow-panel) focus:outline-none sm:w-[min(90vw,720px)] sm:max-w-none dark:border-(--tk-border-strong) dark:bg-(--tk-panel)"
+      >
+        <header className="shrink-0 border-b border-(--tk-border) px-5 py-4 sm:px-6">
+          <TkPanelHeader
+            onClose={() => void tentarFechar()}
+            closeLabel="Fechar painel"
+            title={
+              <SheetTitle className="line-clamp-2 break-words text-[18px] font-semibold leading-snug text-(--tk-text)">
+                {tarefa?.titulo ?? "Tarefa"}
+              </SheetTitle>
+            }
+            description={
+              <SheetDescription className="text-[13px] text-(--tk-text-2)">
+                {tarefa ? `Criada em ${formatarData(tarefa.created_at)}` : "Detalhes da tarefa"}
+                {etapaAtual && ` · ${etapaAtual.nome}`}
+                {desabilitado && " · Somente leitura"}
+              </SheetDescription>
+            }
+          />
+        </header>
 
         {draft && tarefa && (
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          <div className="tk-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-10 pt-5 sm:px-6">
             {externo && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                <div className="flex-1">
-                  Esta tarefa foi alterada por outra pessoa.
-                  <Button type="button" variant="link" className="h-auto p-0 pl-1" onClick={recarregar}>
+              <div
+                role="alert"
+                className="mb-5 flex items-start gap-3 rounded-(--tk-radius-control) border border-(--tk-warn)/40 bg-(--tk-warn-bg) p-3 text-[13px] text-(--tk-text)"
+              >
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-(--tk-warn)" aria-hidden />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p>Esta tarefa foi alterada por outra pessoa enquanto você editava.</p>
+                  <TkButton variant="secondary" size="sm" onClick={recarregar}>
                     Descartar minhas alterações e recarregar
-                  </Button>
+                  </TkButton>
                 </div>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="t-titulo">Título</Label>
-              <Input
-                id="t-titulo"
-                value={draft.titulo}
-                maxLength={300}
-                disabled={desabilitado}
-                onChange={(e) => set("titulo", e.target.value)}
-              />
-            </div>
+            <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+              <TkField label="Título" htmlFor="t-titulo" className="sm:col-span-2">
+                <input
+                  id="t-titulo"
+                  value={draft.titulo}
+                  maxLength={300}
+                  disabled={desabilitado}
+                  onChange={(e) => set("titulo", e.target.value)}
+                  className={tkInput}
+                />
+              </TkField>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Etapa</Label>
+              <TkField label="Etapa" htmlFor="t-etapa">
                 <Select
                   value={draft.etapa_id}
                   onValueChange={(v) => set("etapa_id", v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="t-etapa" className={tkSelect}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={tkMenu}>
                     {etapasVisiveis.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
+                      <SelectItem key={e.id} value={e.id} className={tkMenuItem}>
                         {e.nome}
                         {e.arquivada ? " (arquivada)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Situação</Label>
+              </TkField>
+
+              <TkField label="Situação" htmlFor="t-situacao">
                 <Select
                   value={draft.situacao}
                   onValueChange={(v) => set("situacao", v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="t-situacao" className={tkSelect}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={tkMenu}>
                     {SITUACOES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
+                      <SelectItem key={s.value} value={s.value} className={tkMenuItem}>
+                        <SituacaoOpcao situacao={s.value} />
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="t-modalidade">Modalidade</Label>
-                <Input
+              </TkField>
+
+              <TkField label="Modalidade" htmlFor="t-modalidade">
+                <input
                   id="t-modalidade"
                   list="t-modalidades"
                   value={draft.modalidade}
                   maxLength={80}
+                  placeholder="Selecione ou digite"
                   disabled={desabilitado}
                   onChange={(e) => set("modalidade", e.target.value)}
+                  className={tkInput}
                 />
                 <datalist id="t-modalidades">
                   {modalidades.map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="t-tipo">Tipo</Label>
-                <Input
+              </TkField>
+
+              <TkField label="Tipo" htmlFor="t-tipo">
+                <input
                   id="t-tipo"
                   list="t-tipos"
                   value={draft.tipo}
                   maxLength={80}
+                  placeholder="Selecione ou digite"
                   disabled={desabilitado}
                   onChange={(e) => set("tipo", e.target.value)}
+                  className={tkInput}
                 />
                 <datalist id="t-tipos">
                   {tipos.map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Responsável</Label>
+              </TkField>
+
+              <TkField label="Responsável" htmlFor="t-responsavel" className="sm:col-span-2">
                 <Select
                   value={draft.responsavel_id ?? "__nenhum__"}
                   onValueChange={(v) => set("responsavel_id", v === "__nenhum__" ? null : v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="t-responsavel" className={tkSelect}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__nenhum__">Sem responsável</SelectItem>
+                  <SelectContent className={cn(tkMenu, "max-h-80")}>
+                    <SelectItem value="__nenhum__" className={tkMenuItem}>
+                      Sem responsável
+                    </SelectItem>
                     {equipe.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
+                      <SelectItem key={m.id} value={m.id} className={tkMenuItem}>
                         {m.nome}
                         {m.cargo ? ` — ${m.cargo}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
+              </TkField>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <Label>Secretarias</Label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={draft.todas_secretarias}
+              <TkField
+                label="Secretarias"
+                htmlFor={draft.todas_secretarias ? undefined : "t-secretarias"}
+                className="sm:col-span-2"
+                action={
+                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] text-(--tk-text-2)">
+                    <Switch
+                      checked={draft.todas_secretarias}
+                      disabled={desabilitado}
+                      onCheckedChange={(v) => set("todas_secretarias", v)}
+                    />
+                    Todas as secretarias
+                  </label>
+                }
+              >
+                {draft.todas_secretarias ? (
+                  <p className="flex h-11 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
+                    A tarefa abrange todas as secretarias.
+                  </p>
+                ) : (
+                  <SecretariasMultiSelect
+                    id="t-secretarias"
+                    options={secretarias}
+                    value={draft.secretaria_ids}
+                    onChange={(v) => set("secretaria_ids", v)}
                     disabled={desabilitado}
-                    onCheckedChange={(v) => set("todas_secretarias", v)}
+                    placeholder="Selecionar secretarias"
+                    triggerClassName={cn(tkSelect, "h-auto min-h-11 py-1.5 hover:bg-(--tk-input) hover:text-(--tk-text)")}
+                    contentClassName={cn(tkMenu, "p-0")}
+                    itemClassName={tkMenuItem}
                   />
-                  Todas as secretarias
-                </label>
-              </div>
-              {!draft.todas_secretarias && (
-                <SecretariasMultiSelect
-                  options={secretarias}
-                  value={draft.secretaria_ids}
-                  onChange={(v) => set("secretaria_ids", v)}
+                )}
+              </TkField>
+
+              <TkField label="Processo importado" htmlFor="t-processo" className="sm:col-span-2">
+                <ProcessoPicker
+                  id="t-processo"
+                  value={draft.processo_id}
+                  onChange={(v) => set("processo_id", v)}
                   disabled={desabilitado}
                 />
-              )}
-            </div>
+              </TkField>
 
-            <div className="space-y-1.5">
-              <Label>Processo importado</Label>
-              <ProcessoPicker
-                value={draft.processo_id}
-                onChange={(v) => set("processo_id", v)}
-                disabled={desabilitado}
-              />
-            </div>
+              <TkField label="Link M2A" htmlFor="t-link" className="sm:col-span-2">
+                <div className="relative min-w-0">
+                  <input
+                    id="t-link"
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://..."
+                    value={draft.link_url}
+                    maxLength={2000}
+                    disabled={desabilitado}
+                    onChange={(e) => set("link_url", e.target.value)}
+                    className={cn(tkInput, "pr-[5.25rem]")}
+                  />
+                  <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
+                    {linkValido ? (
+                      <TkTooltip label="Abrir link (nova aba)">
+                        <a
+                          href={linkValido}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Abrir link M2A em nova aba"
+                          className={tkButton({ variant: "tertiary", size: "iconSm" })}
+                        >
+                          <ExternalLink />
+                        </a>
+                      </TkTooltip>
+                    ) : (
+                      <TkIconButton label="Abrir link (informe um endereço válido)" size="iconSm" disabled>
+                        <ExternalLink />
+                      </TkIconButton>
+                    )}
+                    <TkIconButton
+                      label="Copiar link"
+                      size="iconSm"
+                      disabled={!linkValido}
+                      onClick={() => void copiarLink()}
+                    >
+                      <Copy />
+                    </TkIconButton>
+                  </div>
+                </div>
+              </TkField>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="t-link">Link (M2A)</Label>
-              <Input
-                id="t-link"
-                type="url"
-                inputMode="url"
-                placeholder="https://…"
-                value={draft.link_url}
-                maxLength={2000}
-                disabled={desabilitado}
-                onChange={(e) => set("link_url", e.target.value)}
-              />
+              <TkField label="Observações" htmlFor="t-obs" className="sm:col-span-2">
+                <textarea
+                  id="t-obs"
+                  rows={5}
+                  maxLength={10000}
+                  value={draft.observacao}
+                  disabled={desabilitado}
+                  onChange={(e) => set("observacao", e.target.value)}
+                  className={cn(tkTextarea, "resize-y")}
+                />
+              </TkField>
             </div>
 
             {camposDaEtapa.length > 0 && (
-              <fieldset className="space-y-3 rounded-lg border border-border/60 p-3">
-                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Campos da etapa
-                </legend>
-                {camposDaEtapa.map((c) => (
-                  <CampoInput
-                    key={c.id}
-                    campo={c}
-                    valor={draft.campos[c.id] ?? ""}
-                    onChange={(v) => setCampo(c.id, v)}
-                    disabled={desabilitado}
-                  />
-                ))}
-              </fieldset>
+              <TkSection
+                title="Campos da etapa"
+                description={etapaAtual ? `Informações específicas de ${etapaAtual.nome}.` : undefined}
+                className="mt-8 border-t border-(--tk-border) pt-6"
+              >
+                <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+                  {camposDaEtapa.map((c) => (
+                    <CampoInput
+                      key={c.id}
+                      campo={c}
+                      valor={draft.campos[c.id] ?? ""}
+                      onChange={(v) => setCampo(c.id, v)}
+                      disabled={desabilitado}
+                    />
+                  ))}
+                </div>
+              </TkSection>
             )}
 
             {camposOutras.length > 0 && (
-              <details className="rounded-lg border border-border/60 p-3">
-                <summary className="cursor-pointer text-sm font-medium">
+              <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
                   Campos de outras etapas
+                  <span className="text-[12px] font-normal text-(--tk-text-3)">({camposOutras.length})</span>
                 </summary>
-                <div className="mt-3 space-y-3">
+                <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 border-t border-(--tk-border) p-4 sm:grid-cols-2">
                   {camposOutras.map((c) => (
                     <CampoInput
                       key={c.id}
@@ -499,47 +620,42 @@ export function TarefaSheet({
               </details>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="t-obs">Observações</Label>
-              <Textarea
-                id="t-obs"
-                rows={5}
-                maxLength={10000}
-                value={draft.observacao}
-                disabled={desabilitado}
-                onChange={(e) => set("observacao", e.target.value)}
-              />
-            </div>
-
             <AnexosSection tarefaId={tarefa.id} podeEditar={podeEditar} />
             <HistoricoSection tarefaId={tarefa.id} etapas={etapas} equipe={equipe} />
           </div>
         )}
 
-        {podeEditar && tarefa && (
-          <div className="flex items-center justify-between gap-2 border-t border-border/60 px-5 py-3">
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={() => void remover()}
-              disabled={excluir.isPending}
-            >
-              <Trash2 className="size-4" /> Excluir
-            </Button>
-            <div className="flex items-center gap-2">
-              {sujo && <span className="text-xs text-muted-foreground">Alterações não salvas</span>}
-              <Button type="button" onClick={() => void salvar()} disabled={!sujo || atualizar.isPending}>
-                {atualizar.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                Salvar
-              </Button>
+        {tarefa && (
+          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--tk-border) bg-(--tk-panel) px-5 py-3.5 sm:px-6">
+            {podeEditar && (
+              <TkButton variant="danger" onClick={() => void remover()} disabled={excluir.isPending}>
+                {excluir.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                Excluir
+              </TkButton>
+            )}
+            <div className="ml-auto flex min-w-0 items-center gap-2">
+              {sujo && (
+                <span className="hidden truncate text-[12.5px] text-(--tk-text-2) sm:inline" aria-live="polite">
+                  Alterações não salvas
+                </span>
+              )}
+              <TkButton variant="secondary" onClick={() => void tentarFechar()}>
+                {podeEditar ? "Cancelar" : "Fechar"}
+              </TkButton>
+              {podeEditar && (
+                <TkButton
+                  variant="primary"
+                  onClick={() => void salvar()}
+                  disabled={!sujo || atualizar.isPending}
+                >
+                  {atualizar.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                  Salvar
+                </TkButton>
+              )}
             </div>
-          </div>
+          </footer>
         )}
+        {confirmDialog}
       </SheetContent>
     </Sheet>
   );
@@ -561,31 +677,34 @@ function CampoInput({
   const id = `campo-${campo.id}`;
   const rotulo = etapaNome ? `${campo.nome} (${etapaNome})` : campo.nome;
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{rotulo}</Label>
+    <TkField label={rotulo} htmlFor={id}>
       {campo.tipo === "lista" ? (
         <Select
           value={valor || "__vazio__"}
           onValueChange={(v) => onChange(v === "__vazio__" ? "" : v)}
           disabled={disabled}
         >
-          <SelectTrigger id={id}>
+          <SelectTrigger id={id} className={tkSelect}>
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__vazio__">—</SelectItem>
+          <SelectContent className={cn(tkMenu, "max-h-80")}>
+            <SelectItem value="__vazio__" className={tkMenuItem}>
+              Não informado
+            </SelectItem>
             {campo.opcoes.map((o) => (
-              <SelectItem key={o} value={o}>
+              <SelectItem key={o} value={o} className={tkMenuItem}>
                 {o}
               </SelectItem>
             ))}
             {valor && !campo.opcoes.includes(valor) && (
-              <SelectItem value={valor}>{valor}</SelectItem>
+              <SelectItem value={valor} className={tkMenuItem}>
+                {valor}
+              </SelectItem>
             )}
           </SelectContent>
         </Select>
       ) : (
-        <Input
+        <input
           id={id}
           type={
             campo.tipo === "data"
@@ -597,14 +716,15 @@ function CampoInput({
                   : "text"
           }
           step={campo.tipo === "numero" ? "any" : undefined}
-          placeholder={campo.tipo === "link" ? "https://…" : undefined}
+          placeholder={campo.tipo === "link" ? "https://..." : undefined}
           maxLength={1000}
           value={valor}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
+          className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
         />
       )}
-    </div>
+    </TkField>
   );
 }
 
@@ -612,6 +732,7 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
   const { data: anexos = [], isLoading } = useAnexos(tarefaId);
   const enviar = useEnviarAnexo(tarefaId);
   const remover = useRemoverAnexo(tarefaId);
+  const { confirm, dialog } = useConfirmDialog();
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function aoEscolher(files: FileList | null) {
@@ -629,11 +750,30 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
     if (inputRef.current) inputRef.current.value = "";
   }
 
+  async function removerAnexo(a: (typeof anexos)[number]) {
+    const ok = await confirm({
+      title: "Remover anexo?",
+      description: `O arquivo "${a.original_name}" será removido desta tarefa.`,
+      confirmLabel: "Remover anexo",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await remover.mutateAsync(a);
+    } catch (e) {
+      notify.error("Não foi possível remover", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+  }
+
   return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>Anexos</Label>
-        {podeEditar && (
+    <TkSection
+      title="Anexos"
+      description={`Até ${MAX_ANEXO_BYTES / 1024 / 1024} MB por arquivo.`}
+      className="mt-8 border-t border-(--tk-border) pt-6"
+      action={
+        podeEditar ? (
           <>
             <input
               ref={inputRef}
@@ -642,46 +782,41 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
               hidden
               onChange={(e) => void aoEscolher(e.target.files)}
             />
-            <Button
-              type="button"
+            <TkButton
+              variant="secondary"
               size="sm"
-              variant="outline"
               disabled={enviar.isPending}
               onClick={() => inputRef.current?.click()}
             >
-              {enviar.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Upload className="size-4" />
-              )}
-              Anexar
-            </Button>
+              {enviar.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+              Anexar arquivo
+            </TkButton>
           </>
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Até {MAX_ANEXO_BYTES / 1024 / 1024} MB por arquivo.
-      </p>
+        ) : undefined
+      }
+    >
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <p className="flex items-center gap-2 text-[13px] text-(--tk-text-2)">
+          <Loader2 className="size-4 animate-spin" aria-hidden /> Carregando anexos...
+        </p>
       ) : anexos.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum anexo.</p>
+        <p className="rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-4 py-4 text-center text-[13px] text-(--tk-text-2)">
+          Nenhum arquivo anexado.
+        </p>
       ) : (
-        <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+        <ul className="divide-y divide-(--tk-border) overflow-hidden rounded-(--tk-radius-control) border border-(--tk-border)">
           {anexos.map((a) => (
-            <li key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1 truncate" title={a.original_name}>
+            <li key={a.id} className="flex min-w-0 items-center gap-3 px-3 py-2">
+              <FileIcon className="size-4 shrink-0 text-(--tk-text-3)" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-[14px]" title={a.original_name}>
                 {a.original_name}
               </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="shrink-0 text-[12px] tabular-nums text-(--tk-text-3)">
                 {formatarTamanho(a.size_bytes)}
               </span>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="size-7"
-                aria-label={`Baixar ${a.original_name}`}
+              <TkIconButton
+                label={`Baixar ${a.original_name}`}
+                size="iconSm"
                 onClick={() =>
                   void abrirAnexo(a).catch((e: unknown) =>
                     notify.error("Não foi possível abrir o arquivo", {
@@ -690,49 +825,31 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
                   )
                 }
               >
-                <Download className="size-3.5" />
-              </Button>
+                <Download />
+              </TkIconButton>
               {podeEditar && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-7"
-                  aria-label={`Remover ${a.original_name}`}
+                <TkIconButton
+                  label={`Remover ${a.original_name}`}
+                  size="iconSm"
+                  variant="danger"
                   disabled={remover.isPending}
-                  onClick={async () => {
-                    const ok = await notify.confirmAsync(`Remover "${a.original_name}"?`, {
-                      confirmLabel: "Remover",
-                    });
-                    if (!ok) return;
-                    try {
-                      await remover.mutateAsync(a);
-                    } catch (e) {
-                      notify.error("Não foi possível remover", {
-                        description: e instanceof Error ? e.message : undefined,
-                      });
-                    }
-                  }}
+                  onClick={() => void removerAnexo(a)}
                 >
-                  <X className="size-3.5" />
-                </Button>
+                  <X />
+                </TkIconButton>
               )}
             </li>
           ))}
         </ul>
       )}
-    </section>
+      {dialog}
+    </TkSection>
   );
 }
 
-function descreverEvento(
-  ev: EventoRow,
-  etapas: Etapa[],
-  equipe: MembroEquipe[],
-): string {
+function descreverEvento(ev: EventoRow, etapas: Etapa[], equipe: MembroEquipe[]): string {
   const d = (ev.detalhes ?? {}) as Record<string, unknown>;
-  const etapa = (id: unknown) =>
-    etapas.find((e) => e.id === id)?.nome ?? "etapa removida";
+  const etapa = (id: unknown) => etapas.find((e) => e.id === id)?.nome ?? "etapa removida";
   const pessoa = (id: unknown) =>
     id ? (equipe.find((m) => m.id === id)?.nome ?? "alguém") : "ninguém";
   switch (ev.tipo) {
@@ -741,7 +858,8 @@ function descreverEvento(
     case "movida":
       return `Movida de ${etapa(d.de)} para ${etapa(d.para)}`;
     case "situacao": {
-      const rot = (v: unknown) => SITUACOES.find((s) => s.value === v)?.label ?? String(v);
+      const rot = (v: unknown) =>
+        SITUACOES.some((s) => s.value === v) ? situacaoLabel(v as Situacao) : String(v);
       return `Situação: ${rot(d.de)} → ${rot(d.para)}`;
     }
     case "responsavel":
@@ -767,23 +885,28 @@ function HistoricoSection({
   const { data: eventos = [] } = useEventos(tarefaId);
   if (eventos.length === 0) return null;
   return (
-    <details className="rounded-lg border border-border/60 p-3">
-      <summary className="cursor-pointer text-sm font-medium">
-        Histórico ({eventos.length})
+    <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
+        Histórico
+        <span className="text-[12px] font-normal text-(--tk-text-3)">({eventos.length})</span>
       </summary>
-      <ul className="mt-2 space-y-1.5 text-xs">
+      <ol className="space-y-2.5 border-t border-(--tk-border) px-4 py-3 text-[13px]">
         {eventos.map((ev) => (
-          <li key={ev.id} className="flex gap-2">
-            <span className="shrink-0 text-muted-foreground">
+          <li key={ev.id} className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-3">
+            <time
+              dateTime={ev.created_at}
+              className="shrink-0 tabular-nums text-(--tk-text-3) sm:w-32"
+            >
               {new Date(ev.created_at).toLocaleString("pt-BR", {
                 dateStyle: "short",
                 timeStyle: "short",
               })}
-            </span>
-            <span>
+            </time>
+            <span className="min-w-0 break-words text-(--tk-text)">
               {descreverEvento(ev, etapas, equipe)}
               {ev.user_id && (
-                <span className="text-muted-foreground">
+                <span className="text-(--tk-text-2)">
                   {" "}
                   — {equipe.find((m) => m.id === ev.user_id)?.nome ?? "usuário"}
                 </span>
@@ -791,7 +914,7 @@ function HistoricoSection({
             </span>
           </li>
         ))}
-      </ul>
+      </ol>
     </details>
   );
 }

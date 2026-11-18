@@ -1,0 +1,102 @@
+/*
+ * Tokens do módulo Tarefas. Usados via utilitários do Tailwind 4
+ * (ex.: `bg-(--tk-card)`, `border-(--tk-border)`). Ficam em :root/.dark
+ * porque Sheet, Dialog, menus e tooltips são renderizados em portal.
+ */
+:root {
+  --tk-canvas: #f4f6fa;
+  --tk-column: #eceff5;
+  --tk-card: #ffffff;
+  --tk-card-hover: #fbfcfe;
+  --tk-panel: #ffffff;
+  --tk-panel-muted: #f6f8fb;
+  --tk-input: #ffffff;
+  --tk-border: #dfe4ec;
+  --tk-border-strong: #c9d1dd;
+  --tk-text: #0f1a2b;
+  --tk-text-2: #4d5b72;
+  --tk-text-3: #74819a;
+  --tk-accent: oklch(0.47 0.1 205);
+  --tk-accent-hover: oklch(0.42 0.1 205);
+  --tk-accent-fg: #ffffff;
+  --tk-accent-soft: oklch(0.95 0.03 200);
+
+  --tk-ok: #15803d;
+  --tk-ok-bg: #e7f6ec;
+  --tk-warn: #a16207;
+  --tk-warn-bg: #fdf3dc;
+  --tk-danger: #b91c1c;
+  --tk-danger-bg: #fdecec;
+  --tk-info: #1d4ed8;
+  --tk-info-bg: #e8effd;
+  --tk-neutral: #526079;
+  --tk-neutral-bg: #eef1f6;
+
+  --tk-radius-control: 10px;
+  --tk-radius-card: 12px;
+  --tk-radius-column: 14px;
+  --tk-shadow-card: 0 1px 2px rgb(15 23 42 / 0.06);
+  --tk-shadow-card-hover: 0 4px 14px -6px rgb(15 23 42 / 0.18);
+  --tk-shadow-panel: 0 20px 48px -20px rgb(15 23 42 / 0.35);
+  --tk-scrollbar: rgb(100 116 139 / 0.35);
+  --tk-scrollbar-hover: rgb(100 116 139 / 0.55);
+}
+
+.dark {
+  --tk-canvas: #0a0f1c;
+  --tk-column: #0f1526;
+  --tk-card: #151c2f;
+  --tk-card-hover: #19213a;
+  --tk-panel: #0f1526;
+  --tk-panel-muted: #131a2d;
+  --tk-input: #0b1121;
+  --tk-border: rgb(148 163 184 / 0.13);
+  --tk-border-strong: rgb(148 163 184 / 0.24);
+  --tk-text: #e7ebf3;
+  --tk-text-2: #9aa7be;
+  --tk-text-3: #6f7c95;
+  --tk-accent: oklch(0.72 0.11 195);
+  --tk-accent-hover: oklch(0.78 0.11 195);
+  --tk-accent-fg: #06121c;
+  --tk-accent-soft: rgb(45 212 191 / 0.12);
+
+  --tk-ok: #4ade80;
+  --tk-ok-bg: rgb(74 222 128 / 0.12);
+  --tk-warn: #fbbf24;
+  --tk-warn-bg: rgb(251 191 36 / 0.13);
+  --tk-danger: #f87171;
+  --tk-danger-bg: rgb(248 113 113 / 0.13);
+  --tk-info: #7aa7ff;
+  --tk-info-bg: rgb(122 167 255 / 0.13);
+  --tk-neutral: #9aa7be;
+  --tk-neutral-bg: rgb(148 163 184 / 0.12);
+
+  --tk-shadow-card: 0 1px 2px rgb(0 0 0 / 0.25);
+  --tk-shadow-card-hover: 0 6px 18px -8px rgb(0 0 0 / 0.55);
+  --tk-shadow-panel: 0 24px 60px -24px rgb(0 0 0 / 0.7);
+  --tk-scrollbar: rgb(148 163 184 / 0.22);
+  --tk-scrollbar-hover: rgb(148 163 184 / 0.4);
+}
+
+/* Barra de rolagem discreta (quadro e listas internas). */
+.tk-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tk-scrollbar) transparent;
+}
+.tk-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.tk-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tk-scroll::-webkit-scrollbar-thumb {
+  background: var(--tk-scrollbar);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.tk-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--tk-scrollbar-hover);
+  background-clip: padding-box;
+}

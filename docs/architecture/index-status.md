@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-18 (menu reorganizado; rotas `/tarefas` e `/perfil`; removidas `/historico` e `/numeracao`)  
+**Data:** 2026-11-18 (menu reorganizado; rotas `/tarefas` e `/perfil`; removidas `/historico` e `/numeracao`; reformulação visual do módulo Tarefas e relatório)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

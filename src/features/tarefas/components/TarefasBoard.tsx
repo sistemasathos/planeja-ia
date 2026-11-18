@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { cn } from "@/lib/utils";
 import {
   LIMITE_POR_COLUNA,
   posicaoEntre,
@@ -21,6 +22,9 @@ import {
 } from "../lib";
 import { EtapaColumn } from "./EtapaColumn";
 import { TarefaCardView, type CardContexto } from "./TarefaCard";
+
+/** Altura do quadro: ocupa o espaço vertical abaixo do cabeçalho e dos filtros. */
+export const QUADRO_ALTURA = "h-[max(460px,calc(100dvh-21rem))]";
 
 export type MoverInput = {
   id: string;
@@ -36,6 +40,8 @@ type Props = {
   totais: Map<string, number>;
   ctx: CardContexto;
   podeEditar: boolean;
+  /** Tarefa aberta no painel lateral (destacada no quadro). */
+  selecionadaId?: string;
   onMover: (input: MoverInput) => void;
   onAbrir: (id: string) => void;
   onCriar: (etapaId: string, titulo: string) => Promise<void> | void;
@@ -52,6 +58,7 @@ export function TarefasBoard({
   totais,
   ctx,
   podeEditar,
+  selecionadaId,
   onMover,
   onAbrir,
   onCriar,
@@ -148,7 +155,7 @@ export function TarefasBoard({
       onDragCancel={() => setAtivaId(null)}
     >
       <div
-        className="flex items-start gap-3 overflow-x-auto pb-3"
+        className={cn(QUADRO_ALTURA, "tk-scroll relative flex min-w-0 items-stretch gap-3 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/40")}
         role="region"
         aria-label="Quadro de tarefas"
         tabIndex={0}
@@ -161,6 +168,7 @@ export function TarefasBoard({
             totalSemFiltro={totais.get(etapa.id) ?? 0}
             ctx={ctx}
             podeEditar={podeEditar}
+            selecionadaId={selecionadaId}
             limite={limiteDe(etapa.id)}
             primeira={i === 0}
             ultima={i === etapas.length - 1}
@@ -181,11 +189,7 @@ export function TarefasBoard({
         ))}
       </div>
       <DragOverlay>
-        {ativa ? (
-          <div className="w-[284px]">
-            <TarefaCardView tarefa={ativa} ctx={ctx} overlay />
-          </div>
-        ) : null}
+        {ativa ? <TarefaCardView tarefa={ativa} ctx={ctx} overlay /> : null}
       </DragOverlay>
     </DndContext>
   );
