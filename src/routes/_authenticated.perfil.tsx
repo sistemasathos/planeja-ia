@@ -13,13 +13,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -207,13 +207,13 @@ function Page() {
                     </FormItem>
                   )}
                 />
-                <FormItem>
-                  <FormLabel>E-mail</FormLabel>
-                  <Input value={perfil?.email ?? ""} readOnly disabled />
-                  <FormDescription>
+                <div className="space-y-2">
+                  <Label htmlFor="perfil-email">E-mail</Label>
+                  <Input id="perfil-email" value={perfil?.email ?? ""} readOnly disabled />
+                  <p className="text-[0.8rem] text-muted-foreground">
                     O e-mail só pode ser alterado por um administrador.
-                  </FormDescription>
-                </FormItem>
+                  </p>
+                </div>
                 <FormField
                   control={form.control}
                   name="telefone"

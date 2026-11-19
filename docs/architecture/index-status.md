@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-19 (ficha sem encolher, fase única no julgamento e contratos só na contratação)  
+**Data:** 2026-11-19 (página Acompanhamento, item Demanda, menu aberto, vista gravada e perfil sem crash)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

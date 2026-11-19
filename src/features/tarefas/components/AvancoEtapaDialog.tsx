@@ -58,7 +58,7 @@ export function AvancoEtapaDialog({
           description={
             <DialogDescription className={tkDialogDescription}>
               Informe os identificadores documentais desta etapa. Os números das etapas anteriores
-              permanecem na tarefa.
+              permanecem na demanda.
             </DialogDescription>
           }
         />

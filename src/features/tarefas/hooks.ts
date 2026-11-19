@@ -44,7 +44,7 @@ export const TAREFAS_KEYS = {
 
 export class ConflitoTarefaError extends Error {
   constructor() {
-    super("A tarefa foi alterada por outra pessoa. Os dados foram recarregados.");
+    super("A demanda foi alterada por outra pessoa. Os dados foram recarregados.");
     this.name = "ConflitoTarefaError";
   }
 }

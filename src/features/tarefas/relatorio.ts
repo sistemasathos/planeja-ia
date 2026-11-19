@@ -66,7 +66,7 @@ export type Relatorio = {
   emitidoEm: Date;
 };
 
-const TITULO = "Acompanhamento de processo";
+const TITULO = "ACOMPANHAMENTO DE PROCESSOS";
 const SUBTITULO = "Demandas organizadas por etapa.";
 
 /** Identificação institucional opcional, configurada no build (não há valor padrão). */
@@ -191,7 +191,33 @@ function corSituacao(rotulo: string): [number, number, number] | null {
 
 function nomeArquivo(ext: string, d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
-  return `Acompanhamento de pauta ${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}.${ext}`;
+  return `${TITULO} ${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}.${ext}`;
+}
+
+const EMOJIS_ETAPA: { emoji: string; rgb: [number, number, number] }[] = [
+  { emoji: "🔴", rgb: [220, 38, 38] },
+  { emoji: "🟠", rgb: [234, 88, 12] },
+  { emoji: "🟡", rgb: [234, 179, 8] },
+  { emoji: "🟢", rgb: [22, 163, 74] },
+  { emoji: "🔵", rgb: [37, 99, 235] },
+  { emoji: "🟣", rgb: [147, 51, 234] },
+  { emoji: "⚫", rgb: [17, 24, 39] },
+  { emoji: "⚪", rgb: [229, 231, 235] },
+];
+
+function emojiDaCor(hex: string): string {
+  const [r, g, b] = rgbDe(hex);
+  let melhor = EMOJIS_ETAPA[0];
+  let distancia = Number.POSITIVE_INFINITY;
+  for (const item of EMOJIS_ETAPA) {
+    const d =
+      (r - item.rgb[0]) ** 2 + (g - item.rgb[1]) ** 2 + (b - item.rgb[2]) ** 2;
+    if (d < distancia) {
+      distancia = d;
+      melhor = item;
+    }
+  }
+  return melhor.emoji;
 }
 
 function baixar(blob: Blob, nome: string) {
@@ -219,11 +245,7 @@ export function relatorioTexto(r: Relatorio): string {
     if (g.linhas.length === 0) continue;
     out.push(`*${g.indice}. ${g.etapa.nome}* (${g.linhas.length})`);
     for (const l of g.linhas) {
-      const partes = [l.secretarias, l.fase, l.processo && `Processo ${l.processo}`]
-        .filter(Boolean)
-        .join(" · ");
-      const alerta = l.situacao && l.situacao !== "Em dia" ? ` [${l.situacao}]` : "";
-      out.push(`• ${l.titulo}${partes ? ` — ${partes}` : ""}${alerta}`);
+      out.push(`${emojiDaCor(g.cor)} ${l.titulo}`);
     }
     out.push("");
   }

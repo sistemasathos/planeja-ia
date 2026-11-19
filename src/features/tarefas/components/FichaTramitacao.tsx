@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import {
   useContratosTarefa,
   useDocumentos,
-  useEventos,
   useExcluirDocumento,
   useSalvarDocumento,
 } from "../hooks";
@@ -15,7 +14,6 @@ import {
   formatarDia,
   regraTramitacao,
   type DocumentoChave,
-  type Etapa,
 } from "../lib";
 import { TkButton, TkField, TkSection, tkButton, tkInput, tkTextarea } from "./ui";
 
@@ -23,9 +21,6 @@ type Props = {
   tarefaId: string;
   podeEditar: boolean;
   etapaNome: string;
-  etapas: Etapa[];
-  etapaAtualId: string;
-  inclusaoEm?: string | null;
   corEtapa?: string;
   onImportarContratos: () => void;
   vinculos?: ReactNode;
@@ -42,9 +37,6 @@ export function FichaTramitacao({
   tarefaId,
   podeEditar,
   etapaNome,
-  etapas,
-  etapaAtualId,
-  inclusaoEm,
   corEtapa,
   onImportarContratos,
   vinculos,
@@ -52,7 +44,6 @@ export function FichaTramitacao({
   const { data: documentos = [] } = useDocumentos();
   const docs = documentos.filter((d) => d.tarefa_id === tarefaId);
   const contratos = useContratosTarefa(tarefaId);
-  const eventos = useEventos(tarefaId);
   const salvar = useSalvarDocumento();
   const excluir = useExcluirDocumento();
   const [extra, setExtra] = useState(false);
@@ -106,8 +97,6 @@ export function FichaTramitacao({
       });
     }
   }
-
-  const marcos = linhaDoTempo(etapas, eventos.data ?? [], etapaAtualId, inclusaoEm ?? "");
 
   return (
     <div className="flex shrink-0 flex-col gap-3">
@@ -242,27 +231,6 @@ export function FichaTramitacao({
       </TkSection>
       )}
 
-      <TkSection caixa faixa={corEtapa} title="Linha do tempo" description="Entrada em cada etapa da tramitação.">
-        <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {marcos.map((m) => (
-            <li
-              key={m.id}
-              className={cn(
-                "rounded-(--tk-radius-control) border px-3 py-2",
-                m.atual ? "bg-(--tk-panel)" : "border-(--tk-border)",
-              )}
-              style={m.atual && corEtapa ? { borderColor: corEtapa } : undefined}
-            >
-              <p className="truncate text-[13px] font-medium text-(--tk-text)">{m.nome}</p>
-              <p className="text-[12px] text-(--tk-text-2)">
-                {m.entrada ? `Desde ${formatarInstante(m.entrada)}` : "Ainda não alcançada"}
-              </p>
-              {m.saida && <p className="text-[12px] text-(--tk-text-3)">Até {formatarInstante(m.saida)}</p>}
-            </li>
-          ))}
-        </ol>
-      </TkSection>
-
       {regra === "contratacao" && (
         <div className="shrink-0">
           {contratos.data && contratos.data.length > 0 ? (
@@ -280,40 +248,4 @@ export function FichaTramitacao({
       )}
     </div>
   );
-}
-
-function formatarInstante(iso: string): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return formatarDia(iso);
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return formatarDia(iso);
-  return d.toLocaleDateString("pt-BR");
-}
-
-function linhaDoTempo(
-  etapas: Etapa[],
-  eventos: { tipo: string; created_at: string; detalhes: unknown }[],
-  etapaAtualId: string,
-  inclusaoEm: string,
-) {
-  const ordem = [...etapas].filter((e) => !e.arquivada).sort((a, b) => a.posicao - b.posicao);
-  const entrada = new Map<string, string>();
-  const saida = new Map<string, string>();
-  const cron = [...eventos].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  for (const ev of cron) {
-    const d = (ev.detalhes ?? {}) as { etapa_id?: string; de?: string; para?: string };
-    if (ev.tipo === "criada" && d.etapa_id && inclusaoEm) entrada.set(d.etapa_id, inclusaoEm);
-    if (ev.tipo === "movida" && d.para) {
-      if (d.de) saida.set(d.de, ev.created_at);
-      if (!entrada.has(d.para)) entrada.set(d.para, ev.created_at);
-    }
-  }
-  if (inclusaoEm && ordem[0] && !entrada.has(ordem[0].id)) entrada.set(ordem[0].id, inclusaoEm);
-  if (inclusaoEm && !entrada.has(etapaAtualId)) entrada.set(etapaAtualId, inclusaoEm);
-  return ordem.map((e) => ({
-    id: e.id,
-    nome: e.nome,
-    entrada: entrada.get(e.id) ?? null,
-    saida: e.id === etapaAtualId ? null : (saida.get(e.id) ?? null),
-    atual: e.id === etapaAtualId,
-  }));
 }

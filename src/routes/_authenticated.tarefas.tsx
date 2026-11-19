@@ -110,6 +110,25 @@ const VAZIO_SECRETARIAS: { id: string; ids: string[]; label: string; sigla: stri
 const VAZIO_DOCUMENTOS: never[] = [];
 
 const CHAVES_LISTA = ["modalidade", "tipo", "secretaria", "responsavel", "situacao"] as const;
+const VISTA_KEY = "planeja:demandas:vista";
+
+function lerVistaSalva(): "lista" | "quadro" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const valor = window.localStorage.getItem(VISTA_KEY);
+    return valor === "lista" || valor === "quadro" ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
+function gravarVista(vista: "lista" | "quadro") {
+  try {
+    window.localStorage.setItem(VISTA_KEY, vista);
+  } catch {
+    /* armazenamento indisponível: a URL continua valendo */
+  }
+}
 
 export const Route = createFileRoute("/_authenticated/tarefas")({
   component: Page,
@@ -127,7 +146,7 @@ export const Route = createFileRoute("/_authenticated/tarefas")({
   head: () =>
     routeHead({
       path: "/tarefas",
-      title: "Tarefas",
+      title: "Acompanhamento",
       description:
         "Quadro Kanban da equipe para acompanhar pautas, pesquisas, ETPs, publicações, julgamentos e contratos.",
       noindex: true,
@@ -215,6 +234,7 @@ function Page() {
 
   const setLista = useCallback(
     (lista: boolean) => {
+      gravarVista(lista ? "lista" : "quadro");
       void navigate({
         search: (prev) => ({ ...prev, vista: lista ? "lista" : undefined }),
         replace: true,
@@ -222,6 +242,19 @@ function Page() {
     },
     [navigate],
   );
+
+  useEffect(() => {
+    if (search.vista === "lista") {
+      gravarVista("lista");
+      return;
+    }
+    if (lerVistaSalva() === "lista") {
+      void navigate({
+        search: (prev) => ({ ...prev, vista: "lista" }),
+        replace: true,
+      });
+    }
+  }, [navigate, search.vista]);
 
   const abrirTarefa = useCallback(
     (id: string | undefined) => {
@@ -476,7 +509,7 @@ function Page() {
         }
         return nova;
       } catch (e) {
-        notify.error("Não foi possível criar a tarefa", {
+        notify.error("Não foi possível criar a demanda", {
           description: e instanceof Error ? e.message : undefined,
         });
         throw e;
@@ -502,7 +535,7 @@ function Page() {
   const mover = useCallback(
     (input: MoverTarefaInput) => {
       const falha = (e: unknown) =>
-        notify.error("Não foi possível mover a tarefa", {
+        notify.error("Não foi possível mover a demanda", {
           description: e instanceof Error ? e.message : undefined,
         });
       const tarefa = tarefas.find((t) => t.id === input.id);
@@ -579,7 +612,7 @@ function Page() {
           <header className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 max-w-3xl space-y-1.5">
               <h1 className="text-[30px] font-semibold leading-tight tracking-tight text-(--tk-text)">
-                Tarefas
+                Acompanhamento
               </h1>
               <p className="text-[14px] leading-relaxed text-(--tk-text-2)">
                 Quadro de acompanhamento das atividades da equipe, com organização por etapas e
@@ -606,7 +639,7 @@ function Page() {
                   onClick={() => setNovaTarefaAberta(true)}
                   disabled={etapasAtivas.length === 0}
                 >
-                  <Plus /> Nova tarefa
+                  <Plus /> Nova Demanda
                 </TkButton>
               )}
             </div>
@@ -631,7 +664,7 @@ function Page() {
             <div
               className={cn(QUADRO_ALTURA, "flex min-h-0 flex-1 gap-3 overflow-hidden")}
               role="status"
-              aria-label="Carregando tarefas"
+              aria-label="Carregando as demandas"
             >
               {[0, 1, 2, 3].map((i) => (
                 <div
@@ -652,7 +685,7 @@ function Page() {
             <div className="flex min-h-0 flex-1 items-center justify-center">
             <TkEmpty
               icon={Layers}
-              title="Não foi possível carregar as tarefas"
+              title="Não foi possível carregar as demandas"
               description={erro instanceof Error ? erro.message : "Tente novamente em instantes."}
               action={
                 <TkButton
@@ -842,7 +875,7 @@ function NovaTarefaDialog({
       <DialogContent hideClose className={cn(tkDialog, "sm:max-w-md")}>
         <TkPanelHeader
           onClose={fechar}
-          title={<DialogTitle className={tkDialogTitle}>Nova tarefa</DialogTitle>}
+          title={<DialogTitle className={tkDialogTitle}>Nova Demanda</DialogTitle>}
           description={
             <DialogDescription className={tkDialogDescription}>
               A demanda entra na etapa escolhida. Processo e documentos podem ser vinculados depois.

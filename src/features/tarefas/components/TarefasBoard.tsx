@@ -147,7 +147,7 @@ export function TarefasBoard({
       <div
         className={cn(QUADRO_ALTURA, "tk-scroll relative flex min-w-0 items-start gap-3 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/40")}
         role="region"
-        aria-label="Quadro de tarefas"
+        aria-label="Quadro de Demandas"
         tabIndex={0}
       >
         {etapas.map((etapa, i) => (

@@ -239,8 +239,8 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                       Identificador documental
                     </span>
                     <span className="block text-[12.5px] font-normal text-(--tk-text-2)">
-                      Número pedido ao mover a tarefa para esta etapa e exibido no card. O valor
-                      permanece quando a tarefa avança.
+                      Número pedido ao mover a demanda para esta etapa e exibido no card. O valor
+                      permanece quando a demanda avança.
                     </span>
                   </span>
                 </label>
@@ -272,7 +272,7 @@ export function CamposDialog({ etapa, campos, onFechar }: Props) {
                           Obrigatório para avançar
                         </span>
                         <span className="block text-[12.5px] font-normal text-(--tk-text-2)">
-                          Sem este número, a tarefa permanece na etapa anterior.
+                          Sem este número, a demanda permanece na etapa anterior.
                         </span>
                       </span>
                     </label>

@@ -38,7 +38,7 @@ import { APP_NAV, isNavItemActive } from "@/components/layout/nav-config";
 import { useNomeUsuario } from "@/features/perfil/hooks";
 import { iniciais } from "@/features/perfil/lib";
 
-const NAV_GROUPS_STORAGE_KEY = "planeja:nav-groups:v1";
+const NAV_GROUPS_STORAGE_KEY = "planeja:nav-groups:v2";
 
 function loadOpenGroups(): Record<string, boolean> {
   if (typeof window === "undefined") return {};
@@ -97,10 +97,7 @@ function NavList({
       {visibleNav.map((entry) => {
         if ("items" in entry) {
           const GroupIcon = entry.icon;
-          const activeGroup = entry.items.some((item) =>
-            isNavItemActive(item, pathname),
-          );
-          const groupOpen = openGroups[entry.label] ?? activeGroup;
+          const groupOpen = openGroups[entry.label] ?? true;
           const groupLabel = entry.label;
 
           if (collapsed) {

@@ -4,7 +4,7 @@ import { CircleCheckBig, Inbox, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LIMITE_POR_COLUNA, corValida, type Etapa, type Tarefa } from "../lib";
 import { SortableTarefaCard, type CardContexto } from "./TarefaCard";
-import { TkButton, TkCount, TkTooltip } from "./ui";
+import { TkButton, TkCount, TkTooltip, situacaoLabel } from "./ui";
 
 /** Largura adaptável das colunas (também usada no esqueleto de carregamento). */
 export const COLUNA_LARGURA = "w-[clamp(250px,18vw,280px)]";
@@ -89,12 +89,24 @@ export function EtapaColumn({
                 <button
                   type="button"
                   onClick={() => onAbrir(t.id)}
+                  aria-label={`${t.titulo}. Situação: ${situacaoLabel(t.situacao)}`}
                   className={cn(
-                    "w-full cursor-pointer rounded-(--tk-radius-control) px-2 py-1.5 text-left text-[15px] font-semibold leading-snug text-(--tk-text) hover:bg-(--tk-card) hover:text-(--tk-accent)",
+                    "flex w-full cursor-pointer items-center gap-2 rounded-(--tk-radius-control) px-2 py-1.5 text-left text-[15px] font-semibold leading-snug text-(--tk-text) hover:bg-(--tk-card) hover:text-(--tk-accent)",
                     t.id === selecionadaId && "bg-(--tk-accent-soft) text-(--tk-accent)",
                   )}
                 >
-                  {t.titulo}
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      t.situacao === "travada"
+                        ? "bg-(--tk-danger)"
+                        : t.situacao === "atencao"
+                          ? "bg-(--tk-warn)"
+                          : "bg-(--tk-ok)",
+                    )}
+                    aria-hidden
+                  />
+                  <span className="min-w-0">{t.titulo}</span>
                 </button>
               </li>
             ))}

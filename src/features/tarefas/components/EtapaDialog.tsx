@@ -76,7 +76,7 @@ export function EtapaDialog({ aberto, etapa, salvando, onFechar, onSalvar }: Pro
           </TkField>
           <TkField
             label="Cor de identificação"
-            hint="Verde, âmbar e vermelho ficam reservados à situação das tarefas."
+            hint="Verde, âmbar e vermelho ficam reservados à situação das demandas."
           >
             <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Cor de identificação">
               {CORES_SUGERIDAS.map((c) => {
@@ -123,7 +123,7 @@ export function EtapaDialog({ aberto, etapa, salvando, onFechar, onSalvar }: Pro
             <span className="min-w-0 space-y-0.5">
               <span className="block text-[14px] font-medium text-(--tk-text)">Etapa de conclusão</span>
               <span className="block text-[12.5px] text-(--tk-text-2)">
-                Tarefas nesta etapa contam como concluídas no relatório.
+                Demandas nesta etapa contam como concluídas no relatório.
               </span>
             </span>
             <Switch id="etapa-finaliza" checked={finaliza} onCheckedChange={setFinaliza} />

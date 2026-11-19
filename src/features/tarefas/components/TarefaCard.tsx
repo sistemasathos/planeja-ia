@@ -376,7 +376,7 @@ function SortableTarefaCardBase({ tarefa, ctx, onAbrir, podeEditar, selecionada 
                 ref={setActivatorNodeRef}
                 {...attributes}
                 {...listeners}
-                aria-label={`Mover tarefa: ${tarefa.titulo}`}
+                aria-label={`Mover demanda: ${tarefa.titulo}`}
                 className="grid size-7 cursor-grab touch-none place-items-center rounded-lg text-(--tk-text-3) hover:bg-(--tk-neutral-bg) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45 active:cursor-grabbing"
               >
                 <GripVertical className="size-4" aria-hidden />

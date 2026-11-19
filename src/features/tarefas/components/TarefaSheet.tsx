@@ -260,7 +260,7 @@ export function TarefaSheet({
     }
     const titulo = draft.titulo.trim();
     if (!titulo) {
-      notify.error("Informe o título da tarefa");
+      notify.error("Informe o título da demanda");
       return;
     }
     const link = draft.link_url.trim();
@@ -325,11 +325,11 @@ export function TarefaSheet({
           });
         }
       }
-      notify.success("Tarefa salva");
+      notify.success("Demanda salva");
     } catch (e) {
       if (e instanceof ConflitoTarefaError) {
         setExterno(true);
-        notify.error("Tarefa alterada por outra pessoa", {
+        notify.error("Demanda alterada por outra pessoa", {
           description: "Recarregue os dados antes de salvar novamente.",
         });
       } else {
@@ -364,15 +364,15 @@ export function TarefaSheet({
   async function remover() {
     if (!tarefa) return;
     const ok = await confirm({
-      title: "Excluir tarefa?",
+      title: "Excluir demanda?",
       description: `"${tarefa.titulo}" deixará de aparecer no quadro e nos relatórios.`,
-      confirmLabel: "Excluir tarefa",
+      confirmLabel: "Excluir demanda",
       destructive: true,
     });
     if (!ok) return;
     try {
       await excluir.mutateAsync(tarefa.id);
-      notify.success("Tarefa excluída");
+      notify.success("Demanda excluída");
       onFechar();
     } catch (e) {
       notify.error("Não foi possível excluir", {
@@ -385,7 +385,7 @@ export function TarefaSheet({
     if (sujo) {
       const ok = await confirm({
         title: "Descartar alterações?",
-        description: "As alterações feitas nesta tarefa ainda não foram salvas.",
+        description: "As alterações feitas nesta demanda ainda não foram salvas.",
         confirmLabel: "Descartar",
         cancelLabel: "Continuar editando",
         destructive: true,
@@ -426,7 +426,7 @@ export function TarefaSheet({
             closeLabel="Fechar painel"
             title={
               <SheetTitle className="line-clamp-2 break-words text-[18px] font-semibold leading-snug text-(--tk-text)">
-                {tarefa?.titulo ?? "Tarefa"}
+                {tarefa?.titulo ?? "Demanda"}
               </SheetTitle>
             }
             description={
@@ -448,7 +448,7 @@ export function TarefaSheet({
               >
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-(--tk-warn)" aria-hidden />
                 <div className="min-w-0 flex-1 space-y-2">
-                  <p>Esta tarefa foi alterada por outra pessoa enquanto você editava.</p>
+                  <p>Esta demanda foi alterada por outra pessoa enquanto você editava.</p>
                   <TkButton variant="secondary" size="sm" onClick={recarregar}>
                     Descartar minhas alterações e recarregar
                   </TkButton>
@@ -534,7 +534,7 @@ export function TarefaSheet({
               >
                 {draft.todas_secretarias ? (
                   <p className="flex h-10 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
-                    A tarefa abrange todas as secretarias.
+                    A demanda abrange todas as secretarias.
                   </p>
                 ) : (
                   <SecretariasMultiSelect
@@ -672,9 +672,6 @@ export function TarefaSheet({
               tarefaId={tarefa.id}
               podeEditar={podeEditar}
               etapaNome={etapaAtual?.nome ?? ""}
-              etapas={etapas}
-              etapaAtualId={draft.etapa_id}
-              inclusaoEm={tarefa.data_inclusao ?? ""}
               corEtapa={faixa}
               onImportarContratos={() =>
                 void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } })
@@ -979,7 +976,7 @@ function AnexosSection({
   async function removerAnexo(a: (typeof anexos)[number]) {
     const ok = await confirm({
       title: "Remover anexo?",
-      description: `O arquivo "${a.original_name}" será removido desta tarefa.`,
+      description: `O arquivo "${a.original_name}" será removido desta demanda.`,
       confirmLabel: "Remover anexo",
       destructive: true,
     });
@@ -1126,9 +1123,9 @@ function descreverEvento(ev: EventoRow, etapas: Etapa[], equipe: MembroEquipe[])
     case "responsavel":
       return `Responsável: ${pessoa(d.de)} → ${pessoa(d.para)}`;
     case "excluida":
-      return "Tarefa excluída";
+      return "Demanda excluída";
     case "restaurada":
-      return "Tarefa restaurada";
+      return "Demanda restaurada";
     default:
       return ev.tipo;
   }

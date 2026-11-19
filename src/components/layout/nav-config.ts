@@ -38,7 +38,7 @@ export const APP_NAV: NavEntry[] = [
     icon: Home,
     items: [
       { to: "/dashboard", label: "Painel geral", icon: LayoutDashboard },
-      { to: "/tarefas", label: "Tarefas", icon: KanbanSquare },
+      { to: "/tarefas", label: "Acompanhamento", icon: KanbanSquare },
     ],
   },
   {
