@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-19 (quadro mais estreito, criação com etapa, ordem por arraste em Configurações e ficha em caixas)  
+**Data:** 2026-11-19 (ficha sem encolher, fase única no julgamento e contratos só na contratação)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

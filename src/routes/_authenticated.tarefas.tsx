@@ -29,14 +29,17 @@ import {
   useDocumentos,
   useEquipe,
   useEtapas,
+  useFasesQuadro,
   useMoverTarefa,
   type MoverTarefaInput,
   useProcessosPorIds,
   registrarDocumentoTramitacao,
   TAREFAS_KEYS,
   useTarefas,
+  vincularContratosDoProcesso,
 } from "@/features/tarefas/hooks";
 import {
+  FASES_JULGAMENTO,
   FILTROS_VAZIOS,
   MODALIDADES_SUGERIDAS,
   PASSO_POSICAO,
@@ -296,6 +299,22 @@ function Page() {
     return m;
   }, [documentos]);
 
+  const fasesQuadro = useFasesQuadro();
+  const faseJulgamento = useMemo(() => {
+    const julg = new Set(
+      etapas.filter((e) => regraTramitacao(e.nome) === "julgamento").map((e) => e.id),
+    );
+    const nomes = new Map(FASES_JULGAMENTO.map((f) => [f.chave, f.nome]));
+    const mapa = new Map<string, string>();
+    for (const t of tarefas) {
+      if (!julg.has(t.etapa_id)) continue;
+      const chave = fasesQuadro.data?.find((f) => f.tarefa_id === t.id)?.chave;
+      const nome = chave ? nomes.get(chave) : undefined;
+      if (nome) mapa.set(t.id, nome);
+    }
+    return mapa;
+  }, [etapas, fasesQuadro.data, tarefas]);
+
   const ctx: CardContexto = useMemo(
     () => ({
       siglas,
@@ -304,8 +323,9 @@ function Page() {
       processos: processosMap,
       camposPorEtapa,
       documentosPorTarefa,
+      faseJulgamento,
     }),
-    [siglas, secretariasNomes, equipeMap, processosMap, camposPorEtapa, documentosPorTarefa],
+    [siglas, secretariasNomes, equipeMap, processosMap, camposPorEtapa, documentosPorTarefa, faseJulgamento],
   );
 
   const filtradas = useMemo(
@@ -465,6 +485,20 @@ function Page() {
     [campos, criarTarefa, etapas, navigate, pedirAvanco, pedirTramitacao, posicaoFinal, qc],
   );
 
+  const vincularSeContratacao = useCallback(
+    (tarefaId: string, processoId: string | null, nomeEtapa: string) => {
+      if (regraTramitacao(nomeEtapa) !== "contratacao" || !processoId) return;
+      void vincularContratosDoProcesso(tarefaId, processoId)
+        .then(() => qc.invalidateQueries({ queryKey: TAREFAS_KEYS.contratos(tarefaId) }))
+        .catch((e) =>
+          notify.error("A etapa foi atualizada, mas os contratos do processo não foram vinculados", {
+            description: e instanceof Error ? e.message : undefined,
+          }),
+        );
+    },
+    [qc],
+  );
+
   const mover = useCallback(
     (input: MoverTarefaInput) => {
       const falha = (e: unknown) =>
@@ -498,6 +532,7 @@ function Page() {
             moverTarefa.mutate(input, {
               onError: falha,
               onSuccess: () => {
+                vincularSeContratacao(tarefa.id, tarefa.processo_id, etapa.nome);
                 if (valor.importar) {
                   void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } });
                 }
@@ -521,9 +556,16 @@ function Page() {
           return;
         }
       }
-      moverTarefa.mutate(input, { onError: falha });
+      moverTarefa.mutate(input, {
+        onError: falha,
+        onSuccess: () => {
+          if (tarefa && etapa && input.etapa_id !== tarefa.etapa_id) {
+            vincularSeContratacao(tarefa.id, tarefa.processo_id, etapa.nome);
+          }
+        },
+      });
     },
-    [campos, documentos, etapas, moverTarefa, navigate, pedirAvanco, pedirTramitacao, qc, tarefas],
+    [campos, documentos, etapas, moverTarefa, navigate, pedirAvanco, pedirTramitacao, qc, tarefas, vincularSeContratacao],
   );
 
   /* ---------------------------------- Render --------------------------------- */

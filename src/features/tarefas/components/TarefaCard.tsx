@@ -34,6 +34,8 @@ export type CardContexto = {
   /** Campos por etapa (apenas não arquivados), já ordenados. */
   camposPorEtapa: Map<string, Campo[]>;
   documentosPorTarefa: Map<string, { id: string; chave: string | null; titulo: string; numero: string | null }[]>;
+  /** Nome da fase em andamento, só para demandas que estão no julgamento. */
+  faseJulgamento: Map<string, string>;
 };
 
 function rotuloSecretarias(t: Tarefa, siglas: Map<string, string>): string {
@@ -205,6 +207,11 @@ export function TarefaCardView({
           {faseValor && (
             <TkBadge tom="info" title={fase ? `${fase.nome}: ${faseValor}` : faseValor}>
               {faseValor}
+            </TkBadge>
+          )}
+          {ctx.faseJulgamento.get(tarefa.id) && (
+            <TkBadge tom="warn" title={`Fase do julgamento: ${ctx.faseJulgamento.get(tarefa.id)}`}>
+              {ctx.faseJulgamento.get(tarefa.id)}
             </TkBadge>
           )}
         </div>

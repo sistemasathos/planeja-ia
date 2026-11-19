@@ -302,40 +302,54 @@ export function TkSection({
   action,
   className,
   caixa = false,
+  faixa,
   children,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   action?: React.ReactNode;
   className?: string;
   /** Caixa com faixa de destaque, para os passos da ficha. */
   caixa?: boolean;
+  /** Cor da faixa. Sem valor, usa a cor de destaque do tema. */
+  faixa?: string;
   children: React.ReactNode;
 }) {
+  const temCabeca = Boolean(title || description || action);
   return (
     <section
       className={cn(
         caixa
-          ? "min-w-0 overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)"
+          ? "min-w-0 shrink-0 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)"
           : "min-w-0 space-y-3",
         className,
       )}
     >
-      {caixa && <div className="h-[3px] bg-(--tk-accent)" aria-hidden />}
+      {caixa && (
+        <div
+          className="h-[3px] rounded-t-(--tk-radius-card)"
+          style={{ background: faixa || "var(--tk-accent)" }}
+          aria-hidden
+        />
+      )}
       <div className={cn("min-w-0", caixa ? "space-y-2 p-3" : "space-y-3")}>
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className={cn("font-semibold text-(--tk-text)", caixa ? "text-[13px]" : "text-[17px]")}>
-              {title}
-            </h3>
-            {description && (
-              <p className={cn(caixa ? "text-[12px] text-(--tk-text-2)" : "text-[12.5px] text-(--tk-text-3)")}>
-                {description}
-              </p>
-            )}
+        {temCabeca && (
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              {title && (
+                <h3 className={cn("font-semibold text-(--tk-text)", caixa ? "text-[13px]" : "text-[17px]")}>
+                  {title}
+                </h3>
+              )}
+              {description && (
+                <p className={cn(caixa ? "text-[12px] font-normal text-(--tk-text-2)" : "text-[12.5px] text-(--tk-text-3)")}>
+                  {description}
+                </p>
+              )}
+            </div>
+            {action}
           </div>
-          {action}
-        </div>
+        )}
         {children}
       </div>
     </section>

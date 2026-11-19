@@ -38,11 +38,16 @@ import {
   useExcluirTarefa,
   registrarDocumentoTramitacao,
   TAREFAS_KEYS,
+  useDefinirFase,
+  useFases,
   useRemoverAnexo,
+  vincularContratosDoProcesso,
 } from "../hooks";
 import {
+  FASES_JULGAMENTO,
   MAX_ANEXO_BYTES,
   SITUACOES,
+  corValida,
   formatarDia,
   identificadoresDaEtapa,
   identificadoresPendentes,
@@ -160,6 +165,8 @@ export function TarefaSheet({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { data: documentos = [] } = useDocumentos();
+  const fases = useFases(tarefa?.id);
+  const definirFase = useDefinirFase(tarefa?.id ?? "");
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [avancoAberto, setAvancoAberto] = useState(false);
@@ -211,6 +218,9 @@ export function TarefaSheet({
     (c) => c.etapa_id !== draft?.etapa_id && !c.identificador,
   );
   const etapaAtual = etapas.find((e) => e.id === draft?.etapa_id);
+  const faixa = corValida(etapaAtual?.cor);
+  const emJulgamento = regraTramitacao(etapaAtual?.nome ?? "") === "julgamento";
+  const faseAtual = fases.data?.find((f) => f.situacao === "em_andamento")?.chave ?? "";
 
   function set<K extends keyof Draft>(k: K, v: Draft[K]) {
     setDraft((d) => (d ? { ...d, [k]: v } : d));
@@ -304,6 +314,17 @@ export function TarefaSheet({
       setDraft(salvo);
       originalRef.current = salvo;
       setExterno(false);
+      const destino = etapas.find((e) => e.id === draft.etapa_id);
+      if (destino && regraTramitacao(destino.nome) === "contratacao" && draft.processo_id) {
+        try {
+          await vincularContratosDoProcesso(tarefa.id, draft.processo_id);
+          await qc.invalidateQueries({ queryKey: TAREFAS_KEYS.contratos(tarefa.id) });
+        } catch (erroVinculo) {
+          notify.error("A etapa foi salva, mas os contratos do processo não foram vinculados", {
+            description: erroVinculo instanceof Error ? erroVinculo.message : undefined,
+          });
+        }
+      }
       notify.success("Tarefa salva");
     } catch (e) {
       if (e instanceof ConflitoTarefaError) {
@@ -409,7 +430,7 @@ export function TarefaSheet({
               </SheetTitle>
             }
             description={
-              <SheetDescription className="text-[13px] text-(--tk-text-2)">
+              <SheetDescription className="text-[13px] font-normal text-(--tk-text-2)">
                 {[etapaAtual?.nome, desabilitado ? "Somente leitura" : ""]
                   .filter(Boolean)
                   .join(" · ") || "Acompanhamento da demanda"}
@@ -419,11 +440,11 @@ export function TarefaSheet({
         </header>
 
         {draft && tarefa && (
-          <div className="tk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3">
+          <div className="tk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3">
             {externo && (
               <div
                 role="alert"
-                className="mb-5 flex items-start gap-3 rounded-(--tk-radius-control) border border-(--tk-warn)/40 bg-(--tk-warn-bg) p-3 text-[13px] text-(--tk-text)"
+                className="mb-1 flex shrink-0 items-start gap-3 rounded-(--tk-radius-control) border border-(--tk-warn)/40 bg-(--tk-warn-bg) p-3 text-[13px] text-(--tk-text)"
               >
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-(--tk-warn)" aria-hidden />
                 <div className="min-w-0 flex-1 space-y-2">
@@ -435,7 +456,7 @@ export function TarefaSheet({
               </div>
             )}
 
-            <TkSection caixa title="Identificação">
+            <TkSection caixa faixa={faixa}>
             <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
               <TkField label="Título" htmlFor="t-titulo">
                 <input
@@ -460,7 +481,7 @@ export function TarefaSheet({
             </div>
             </TkSection>
 
-            <TkSection caixa title="Classificação">
+            <TkSection caixa faixa={faixa}>
             <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
               <TkField label="Modalidade" htmlFor="t-modalidade">
                 <input
@@ -532,8 +553,13 @@ export function TarefaSheet({
             </div>
             </TkSection>
 
-            <TkSection caixa title="Acompanhamento">
-            <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
+            <TkSection caixa faixa={faixa}>
+            <div
+              className={cn(
+                "grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
+                emJulgamento && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.1fr)]",
+              )}
+            >
               <TkField label="Etapa" htmlFor="t-etapa">
                 <Select
                   value={draft.etapa_id}
@@ -573,7 +599,7 @@ export function TarefaSheet({
                 </Select>
               </TkField>
 
-              <TkField label="Responsável" htmlFor="t-responsavel" className="sm:col-span-2">
+              <TkField label="Responsável" htmlFor="t-responsavel">
                 <Select
                   value={draft.responsavel_id ?? "__nenhum__"}
                   onValueChange={(v) => set("responsavel_id", v === "__nenhum__" ? null : v)}
@@ -595,10 +621,36 @@ export function TarefaSheet({
                   </SelectContent>
                 </Select>
               </TkField>
+              {emJulgamento && (
+                <TkField label="Fase do julgamento" htmlFor="t-fase" className="sm:col-span-3 lg:col-span-1">
+                  <Select
+                    value={faseAtual || undefined}
+                    onValueChange={(v) => {
+                      void definirFase.mutateAsync(v).catch((e) =>
+                        notify.error("Não foi possível salvar a fase", {
+                          description: e instanceof Error ? e.message : undefined,
+                        }),
+                      );
+                    }}
+                    disabled={desabilitado || definirFase.isPending}
+                  >
+                    <SelectTrigger id="t-fase" className={cn(tkSelect, "h-10")}>
+                      <SelectValue placeholder="Selecionar fase" />
+                    </SelectTrigger>
+                    <SelectContent className={tkMenu}>
+                      {FASES_JULGAMENTO.map((fase) => (
+                        <SelectItem key={fase.chave} value={fase.chave} className={tkMenuItem}>
+                          {fase.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TkField>
+              )}
             </div>
             </TkSection>
 
-            <TkSection caixa title="Observações / andamento">
+            <TkSection caixa faixa={faixa}>
               <TkField label="Lembrete do andamento" htmlFor="t-obs">
                 <textarea
                   id="t-obs"
@@ -623,12 +675,13 @@ export function TarefaSheet({
               etapas={etapas}
               etapaAtualId={draft.etapa_id}
               inclusaoEm={tarefa.data_inclusao ?? ""}
+              corEtapa={faixa}
               onImportarContratos={() =>
                 void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } })
               }
               vinculos={
-                <TkSection caixa title="Vínculos" description="Processo administrativo e acesso ao M2A.">
-                  <div className="grid gap-2">
+                <TkSection caixa faixa={faixa}>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <TkField label="Processo administrativo" htmlFor="t-processo">
                       <ProcessoPicker
                         id="t-processo"
@@ -687,6 +740,7 @@ export function TarefaSheet({
             {camposDaEtapa.length > 0 && (
               <TkSection
                 caixa
+                faixa={faixa}
                 title="Campos da etapa"
                 description={etapaAtual ? `Informações específicas de ${etapaAtual.nome}.` : undefined}
               >
@@ -705,7 +759,7 @@ export function TarefaSheet({
             )}
 
             {camposOutras.length > 0 && (
-              <details className="group overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)">
+              <details className="group shrink-0 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-medium text-(--tk-text) [&::-webkit-details-marker]:hidden">
                   <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
                   Campos de outras etapas
@@ -726,12 +780,13 @@ export function TarefaSheet({
               </details>
             )}
 
-            <AnexosSection tarefaId={tarefa.id} podeEditar={podeEditar} />
+            <AnexosSection tarefaId={tarefa.id} podeEditar={podeEditar} faixa={faixa} />
             <HistoricoSection
               tarefaId={tarefa.id}
               etapas={etapas}
               equipe={equipe}
               dataInclusao={tarefa.data_inclusao}
+              faixa={faixa}
             />
           </div>
         )}
@@ -891,7 +946,15 @@ function CampoInput({
   );
 }
 
-function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar: boolean }) {
+function AnexosSection({
+  tarefaId,
+  podeEditar,
+  faixa,
+}: {
+  tarefaId: string;
+  podeEditar: boolean;
+  faixa?: string;
+}) {
   const { data: anexos = [], isLoading } = useAnexos(tarefaId);
   const enviar = useEnviarAnexo(tarefaId);
   const remover = useRemoverAnexo(tarefaId);
@@ -933,6 +996,7 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
   return (
     <TkSection
       caixa
+      faixa={faixa}
       title="Anexos"
       description={`Até ${MAX_ANEXO_BYTES / 1024 / 1024} MB por arquivo.`}
       action={
@@ -1075,16 +1139,21 @@ function HistoricoSection({
   etapas,
   equipe,
   dataInclusao,
+  faixa,
 }: {
   tarefaId: string;
   etapas: Etapa[];
   equipe: MembroEquipe[];
   dataInclusao?: string | null;
+  faixa?: string;
 }) {
   const { data: eventos = [] } = useEventos(tarefaId);
   if (eventos.length === 0) return null;
   return (
-    <details className="group overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) border-t-[3px] border-t-(--tk-accent) bg-(--tk-panel-muted)">
+    <details
+      className="group shrink-0 rounded-(--tk-radius-card) border border-(--tk-border) border-t-[3px] bg-(--tk-panel-muted)"
+      style={{ borderTopColor: faixa || "var(--tk-accent)" }}
+    >
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 text-[13px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
         Histórico

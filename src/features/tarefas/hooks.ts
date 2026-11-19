@@ -19,6 +19,7 @@ import {
   type CampoTipo,
   type Etapa,
   DOCUMENTOS_FIXOS,
+  FASES_JULGAMENTO,
   type EventoRow,
   type AnexoRow,
   type MembroEquipe,
@@ -37,6 +38,7 @@ export const TAREFAS_KEYS = {
   eventos: (id: string) => ["tarefas", "eventos", id] as const,
   documentos: ["tarefas", "documentos"] as const,
   fases: (id: string) => ["tarefas", "fases", id] as const,
+  fasesQuadro: ["tarefas", "fases", "quadro"] as const,
   contratos: (id: string) => ["tarefas", "contratos", id] as const,
 };
 
@@ -715,8 +717,67 @@ export function useSalvarFase(tarefaId: string) {
       );
       if (error) throw error;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fases(tarefaId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fases(tarefaId) });
+      void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fasesQuadro });
+    },
   });
+}
+
+/** Fase atual do julgamento: uma linha em andamento. As demais linhas permanecem. */
+export function useDefinirFase(tarefaId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (chave: string) => {
+      const posicao = Math.max(0, FASES_JULGAMENTO.findIndex((f) => f.chave === chave));
+      const { data: atuais, error: ler } = await supabase
+        .from("tarefa_fases")
+        .select("chave")
+        .eq("tarefa_id", tarefaId)
+        .eq("situacao", "em_andamento")
+        .neq("chave", chave);
+      if (ler) throw ler;
+      for (const row of atuais ?? []) {
+        const { error } = await supabase
+          .from("tarefa_fases")
+          .update({ situacao: "pendente" })
+          .eq("tarefa_id", tarefaId)
+          .eq("chave", row.chave);
+        if (error) throw error;
+      }
+      const { error } = await supabase.from("tarefa_fases").upsert(
+        { tarefa_id: tarefaId, chave, situacao: "em_andamento", posicao },
+        { onConflict: "tarefa_id,chave" },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fases(tarefaId) });
+      void qc.invalidateQueries({ queryKey: TAREFAS_KEYS.fasesQuadro });
+    },
+  });
+}
+
+export function useFasesQuadro() {
+  return useQuery({
+    queryKey: TAREFAS_KEYS.fasesQuadro,
+    queryFn: async (): Promise<{ tarefa_id: string; chave: string }[]> => {
+      const { data, error } = await supabase
+        .from("tarefa_fases")
+        .select("tarefa_id, chave")
+        .eq("situacao", "em_andamento");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+/** Liga os contratos já gravados no processo, sem copiar o contrato. Idempotente. */
+export async function vincularContratosDoProcesso(tarefaId: string, processoId: string | null) {
+  if (!processoId) return;
+  const { data, error } = await supabase.from("contratos").select("id").eq("processo_id", processoId);
+  if (error) throw error;
+  await vincularContratos(tarefaId, (data ?? []).map((c) => c.id));
 }
 
 export type ContratoVinculo = {

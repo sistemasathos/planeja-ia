@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { FileCheck, FileText, Gavel, Plus, Search, Trash2 } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -8,21 +8,16 @@ import {
   useDocumentos,
   useEventos,
   useExcluirDocumento,
-  useFases,
   useSalvarDocumento,
-  useSalvarFase,
 } from "../hooks";
 import {
   DOCUMENTOS_FIXOS,
-  FASES_JULGAMENTO,
-  FASE_SITUACOES,
   formatarDia,
   regraTramitacao,
   type DocumentoChave,
   type Etapa,
-  type FaseSituacao,
 } from "../lib";
-import { TkButton, TkField, TkSection, tkInput, tkSelect, tkTextarea } from "./ui";
+import { TkButton, TkField, TkSection, tkButton, tkInput, tkTextarea } from "./ui";
 
 type Props = {
   tarefaId: string;
@@ -31,8 +26,16 @@ type Props = {
   etapas: Etapa[];
   etapaAtualId: string;
   inclusaoEm?: string | null;
+  corEtapa?: string;
   onImportarContratos: () => void;
   vinculos?: ReactNode;
+};
+
+const DOC_ICONE: Record<DocumentoChave, { Icone: typeof FileText; classe: string }> = {
+  dfd: { Icone: FileText, classe: "text-(--tk-info)" },
+  pesquisa: { Icone: Search, classe: "text-(--tk-accent)" },
+  etp: { Icone: FileCheck, classe: "text-violet-500" },
+  certame: { Icone: Gavel, classe: "text-(--tk-warn)" },
 };
 
 export function FichaTramitacao({
@@ -42,22 +45,20 @@ export function FichaTramitacao({
   etapas,
   etapaAtualId,
   inclusaoEm,
+  corEtapa,
   onImportarContratos,
   vinculos,
 }: Props) {
   const { data: documentos = [] } = useDocumentos();
   const docs = documentos.filter((d) => d.tarefa_id === tarefaId);
-  const fases = useFases(tarefaId);
   const contratos = useContratosTarefa(tarefaId);
   const eventos = useEventos(tarefaId);
   const salvar = useSalvarDocumento();
   const excluir = useExcluirDocumento();
-  const salvarFase = useSalvarFase(tarefaId);
   const [extra, setExtra] = useState(false);
   const [novo, setNovo] = useState({ titulo: "", numero: "", data: "", observacao: "", link_url: "" });
 
   const regra = regraTramitacao(etapaNome);
-  const mostraFases = regra === "julgamento" || regra === "contratacao";
   const porChave = new Map(docs.filter((d) => d.chave).map((d) => [d.chave, d]));
   const extras = docs.filter((d) => !d.chave);
 
@@ -109,20 +110,24 @@ export function FichaTramitacao({
   const marcos = linhaDoTempo(etapas, eventos.data ?? [], etapaAtualId, inclusaoEm ?? "");
 
   return (
-    <div className="flex flex-col gap-3">
-      <TkSection caixa title="Dados da contratação" description="Números e datas gerados ao longo da tramitação.">
-        <div className="grid gap-2 sm:grid-cols-2">
+    <div className="flex shrink-0 flex-col gap-3">
+      <TkSection caixa faixa={corEtapa}>
+        <ul className="space-y-2">
           {DOCUMENTOS_FIXOS.map((def) => {
             const doc = porChave.get(def.chave);
+            const visual = DOC_ICONE[def.chave];
+            const Icone = visual.Icone;
             return (
-              <div
-                key={def.chave}
-                className="space-y-2 rounded-(--tk-radius-control) border border-(--tk-border) bg-(--tk-panel) p-2.5"
-              >
-                <p className="text-[14px] font-medium text-(--tk-text)">{def.titulo}</p>
-                <TkField label="Número" htmlFor={`doc-${def.chave}-n`}>
+              <li key={def.chave} className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <span className="flex w-32 shrink-0 items-center gap-2 text-[14px] font-medium text-(--tk-text)">
+                  <Icone className={cn("size-4 shrink-0", visual.classe)} aria-hidden />
+                  {def.titulo}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap gap-2">
                   <input
                     id={`doc-${def.chave}-n`}
+                    aria-label={`Número do ${def.titulo}`}
+                    placeholder="Número"
                     defaultValue={doc?.numero ?? ""}
                     maxLength={80}
                     disabled={!podeEditar}
@@ -131,13 +136,12 @@ export function FichaTramitacao({
                       if ((doc?.numero ?? "") === e.target.value.trim()) return;
                       void gravarFixo(def.chave, def.titulo, { numero: e.target.value });
                     }}
-                    className={cn(tkInput, "h-10")}
+                    className={cn(tkInput, "h-10 min-w-0 flex-1 basis-40")}
                   />
-                </TkField>
-                <TkField label="Data" htmlFor={`doc-${def.chave}-d`}>
                   <input
                     id={`doc-${def.chave}-d`}
                     type="date"
+                    aria-label={`Data do ${def.titulo}`}
                     defaultValue={doc?.data?.slice(0, 10) ?? ""}
                     disabled={!podeEditar}
                     key={`${doc?.id ?? def.chave}-d-${doc?.data ?? ""}`}
@@ -145,14 +149,13 @@ export function FichaTramitacao({
                       if ((doc?.data ?? "") === e.target.value) return;
                       void gravarFixo(def.chave, def.titulo, { data: e.target.value });
                     }}
-                    className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
+                    className={cn(tkInput, "h-10 w-full [color-scheme:light] sm:w-[9.5rem] dark:[color-scheme:dark]")}
                   />
-                </TkField>
-                {def.horario && (
-                  <TkField label="Horário" htmlFor={`doc-${def.chave}-h`}>
+                  {def.horario && (
                     <input
                       id={`doc-${def.chave}-h`}
                       type="time"
+                      aria-label="Horário do certame"
                       defaultValue={doc?.horario?.slice(0, 5) ?? ""}
                       disabled={!podeEditar}
                       key={`${doc?.id ?? def.chave}-h-${doc?.horario ?? ""}`}
@@ -161,14 +164,20 @@ export function FichaTramitacao({
                         if (atual === e.target.value) return;
                         void gravarFixo(def.chave, def.titulo, { horario: e.target.value });
                       }}
-                      className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
+                      className={cn(tkInput, "h-10 w-full [color-scheme:light] sm:w-[6.5rem] dark:[color-scheme:dark]")}
                     />
-                  </TkField>
-                )}
-              </div>
+                  )}
+                </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
+      </TkSection>
+
+      {vinculos}
+
+      {(extras.length > 0 || podeEditar) && (
+      <TkSection caixa faixa={corEtapa}>
         {extras.length > 0 && (
           <ul className="mt-4 space-y-2">
             {extras.map((d) => (
@@ -231,93 +240,18 @@ export function FichaTramitacao({
           </div>
         )}
       </TkSection>
-
-      {vinculos}
-
-      <TkSection caixa title="Contratos" description="Contratos importados e vinculados a esta demanda.">
-        {contratos.data?.length ? (
-          <ul className="space-y-2">
-            {contratos.data.map((c) => (
-              <li key={c.id}>
-                <Link to="/contratos/$id" params={{ id: c.id }} className="block min-w-0 rounded-(--tk-radius-control) border border-(--tk-border) px-3 py-2 hover:bg-(--tk-card-hover)">
-                  <span className="block text-[14px] font-medium text-(--tk-text)">{c.numero_contrato}</span>
-                  <span className="block truncate text-[13px] text-(--tk-text-2)">{c.objeto}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-[13px] text-(--tk-text-2)">Nenhum contrato vinculado.</p>
-        )}
-        {podeEditar && (
-          <TkButton variant="secondary" className="mt-3" onClick={onImportarContratos}>
-            <Plus /> Adicionar contratos
-          </TkButton>
-        )}
-      </TkSection>
-
-      {mostraFases && (
-        <TkSection caixa title="Fases do julgamento" description="Situação de cada fase, sem criar novas colunas no quadro.">
-          <ul className="space-y-3">
-            {FASES_JULGAMENTO.map((fase, i) => {
-              const atual = fases.data?.find((f) => f.chave === fase.chave);
-              const situacao = (atual?.situacao ?? "pendente") as FaseSituacao;
-              return (
-                <li key={fase.chave} className="grid items-end gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_9rem]">
-                  <p className="pb-2 text-[14px] text-(--tk-text)">{fase.nome}</p>
-                  <select
-                    aria-label={`Situação de ${fase.nome}`}
-                    value={situacao}
-                    disabled={!podeEditar}
-                    onChange={(e) =>
-                      void salvarFase.mutateAsync({
-                        chave: fase.chave,
-                        situacao: e.target.value,
-                        data: atual?.data,
-                        observacao: atual?.observacao,
-                        posicao: i,
-                      })
-                    }
-                    className={cn(tkSelect, "h-10")}
-                  >
-                    {FASE_SITUACOES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="date"
-                    aria-label={`Data de ${fase.nome}`}
-                    defaultValue={atual?.data?.slice(0, 10) ?? ""}
-                    key={`${fase.chave}-${atual?.data ?? ""}`}
-                    disabled={!podeEditar}
-                    onBlur={(e) => {
-                      if ((atual?.data ?? "") === e.target.value) return;
-                      void salvarFase.mutateAsync({
-                        chave: fase.chave,
-                        situacao,
-                        data: e.target.value,
-                        observacao: atual?.observacao,
-                        posicao: i,
-                      });
-                    }}
-                    className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        </TkSection>
       )}
 
-      <TkSection caixa title="Linha do tempo" description="Entrada em cada etapa da tramitação.">
+      <TkSection caixa faixa={corEtapa} title="Linha do tempo" description="Entrada em cada etapa da tramitação.">
         <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {marcos.map((m) => (
             <li
               key={m.id}
               className={cn(
                 "rounded-(--tk-radius-control) border px-3 py-2",
-                m.atual ? "border-(--tk-accent) bg-(--tk-accent-soft)" : "border-(--tk-border)",
+                m.atual ? "bg-(--tk-panel)" : "border-(--tk-border)",
               )}
+              style={m.atual && corEtapa ? { borderColor: corEtapa } : undefined}
             >
               <p className="truncate text-[13px] font-medium text-(--tk-text)">{m.nome}</p>
               <p className="text-[12px] text-(--tk-text-2)">
@@ -328,6 +262,22 @@ export function FichaTramitacao({
           ))}
         </ol>
       </TkSection>
+
+      {regra === "contratacao" && (
+        <div className="shrink-0">
+          {contratos.data && contratos.data.length > 0 ? (
+            <Link to="/contratos" className={tkButton({ variant: "secondary" })}>
+              Acessar contratos
+            </Link>
+          ) : (
+            podeEditar && (
+              <TkButton variant="secondary" onClick={onImportarContratos}>
+                <Plus /> Adicionar contratos
+              </TkButton>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
