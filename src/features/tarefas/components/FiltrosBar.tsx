@@ -197,7 +197,7 @@ export function FiltrosBar({
   }
 
   return (
-    <div className="@container flex min-w-0 flex-col gap-3">
+    <div className="@container flex min-w-0 flex-col gap-2">
       <div
         className="flex min-w-0 flex-col gap-2 @min-[68rem]:flex-row @min-[68rem]:items-center"
         role="search"

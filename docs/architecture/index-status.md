@@ -1,6 +1,6 @@
 # Status da indexação
 
-**Data:** 2026-11-18 (quadro de tarefas fixo na altura da tela; cartão sem números até expandir)  
+**Data:** 2026-11-19 (quadro mais estreito, criação com etapa, ordem por arraste em Configurações e ficha em caixas)  
 **Graphify:** indisponível (nenhum namespace/tool encontrado). Não simulado.
 
 ## Método

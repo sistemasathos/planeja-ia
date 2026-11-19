@@ -41,19 +41,19 @@ export const SITUACOES: { value: Situacao; label: string }[] = [
 
 export const MODALIDADES_SUGERIDAS = [
   "Pregão Eletrônico",
-  "Dispensa",
-  "Inexigibilidade",
   "Concorrência",
+  "Dispensa Eletrônica",
+  "Inexigibilidade",
   "Adesão a ARP",
-  "Registro de Preços",
+  "Credenciamento",
+  "Chamamento Público",
 ];
 
 export const TIPOS_SUGERIDOS = [
-  "Compra",
-  "Serviço",
-  "Obra",
-  "Registro de preços",
-  "Contratação direta",
+  "Compras",
+  "Serviços Comuns",
+  "Obras",
+  "Serviços de Engenharia Comuns",
 ];
 
 export const LIMITE_POR_COLUNA = 50;

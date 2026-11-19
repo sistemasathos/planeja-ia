@@ -42,7 +42,7 @@ Cada feature segue **components/** + **hooks/** + `lib.ts` (helpers locais).
 | `relatorio.ts` | `montarRelatorio` (grupos + indicadores + critérios), `relatorioVazio`, `relatorioTexto`, `exportarRelatorioPdf`, `imprimirRelatorio` (A4), `exportarRelatorioExcel`; identificação opcional via `VITE_RELATORIO_ORGAO/SETOR/LOGO_URL` |
 | `tarefas.css` | Tokens visuais do módulo (`--tk-*`, claro/escuro) e `.tk-scroll` |
 | `components/ui.tsx` | Primitivos do módulo: `TkButton`/`TkIconButton`/`TkTooltip`, classes `tkInput`/`tkSelect`/`tkMenu*`, `TkField`, `TkBadge`, `SituacaoBadge`/`SituacaoOpcao`, `TkEmpty`, `TkPanelHeader`, `useConfirmDialog` |
-| `components/` | `TarefasBoard` (DnD, altura restante da página), `EtapaColumn` (`COLUNA_LARGURA`, botão na cor da etapa), `TarefaCard` (título no cartão; números de DFD e pesquisa só nos detalhes), `TarefaSheet`, `AvancoEtapaDialog`, `EtapaDialog`, `CamposDialog`, `FiltrosBar` (chips de critérios), `ProcessoPicker`, `RelatorioMenu` |
+| `components/` | `TarefasBoard` (DnD, altura restante da página), `EtapaColumn` (`COLUNA_LARGURA` 250–280 px, faixa de 5 px), `TarefaCard` (título no cartão; números de DFD e pesquisa só nos detalhes), `TarefaSheet`, `AvancoEtapaDialog`, `EtapaDialog`, `CamposDialog`, `FiltrosBar` (chips de critérios), `ProcessoPicker`, `RelatorioMenu` |
 
 ### `perfil`
 

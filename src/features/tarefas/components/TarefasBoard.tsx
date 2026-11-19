@@ -45,7 +45,6 @@ type Props = {
   lista?: boolean;
   onMover: (input: MoverInput) => void;
   onAbrir: (id: string) => void;
-  onCriar: (etapaId: string, titulo: string) => Promise<void | false> | void | false;
 };
 
 export function TarefasBoard({
@@ -58,7 +57,6 @@ export function TarefasBoard({
   lista = false,
   onMover,
   onAbrir,
-  onCriar,
 }: Props) {
   const [ativaId, setAtivaId] = useState<string | null>(null);
   const [limites, setLimites] = useState<Record<string, number>>({});
@@ -147,7 +145,7 @@ export function TarefasBoard({
       onDragCancel={() => setAtivaId(null)}
     >
       <div
-        className={cn(QUADRO_ALTURA, "tk-scroll relative flex min-w-0 items-stretch gap-3 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/40")}
+        className={cn(QUADRO_ALTURA, "tk-scroll relative flex min-w-0 items-start gap-3 overflow-x-auto overflow-y-hidden pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/40")}
         role="region"
         aria-label="Quadro de tarefas"
         tabIndex={0}
@@ -170,7 +168,6 @@ export function TarefasBoard({
                 [eid]: (l[eid] ?? LIMITE_POR_COLUNA) + LIMITE_POR_COLUNA,
               }))
             }
-            onCriar={onCriar}
           />
         ))}
       </div>

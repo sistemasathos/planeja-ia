@@ -301,24 +301,43 @@ export function TkSection({
   description,
   action,
   className,
+  caixa = false,
   children,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
   className?: string;
+  /** Caixa com faixa de destaque, para os passos da ficha. */
+  caixa?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn("min-w-0 space-y-3", className)}>
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-[17px] font-semibold text-(--tk-text)">{title}</h3>
-          {description && <p className="text-[12.5px] text-(--tk-text-3)">{description}</p>}
+    <section
+      className={cn(
+        caixa
+          ? "min-w-0 overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)"
+          : "min-w-0 space-y-3",
+        className,
+      )}
+    >
+      {caixa && <div className="h-[3px] bg-(--tk-accent)" aria-hidden />}
+      <div className={cn("min-w-0", caixa ? "space-y-2 p-3" : "space-y-3")}>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className={cn("font-semibold text-(--tk-text)", caixa ? "text-[13px]" : "text-[17px]")}>
+              {title}
+            </h3>
+            {description && (
+              <p className={cn(caixa ? "text-[12px] text-(--tk-text-2)" : "text-[12.5px] text-(--tk-text-3)")}>
+                {description}
+              </p>
+            )}
+          </div>
+          {action}
         </div>
-        {action}
+        {children}
       </div>
-      {children}
     </section>
   );
 }

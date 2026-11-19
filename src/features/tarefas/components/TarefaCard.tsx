@@ -141,7 +141,7 @@ export function TarefaCardView({
     <article
       aria-label={tarefa.titulo}
       className={cn(
-        "group/card relative flex min-w-0 flex-col gap-2 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) p-3 text-(--tk-text) shadow-(--tk-shadow-card) transition-[border-color,background-color,box-shadow]",
+        "group/card relative flex min-w-0 flex-col gap-2 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) p-2.5 text-(--tk-text) shadow-(--tk-shadow-card) transition-[border-color,background-color,box-shadow]",
         "hover:border-(--tk-border-strong) hover:bg-(--tk-card-hover)",
         selecionada && "border-(--tk-accent)/70 ring-1 ring-(--tk-accent)/40",
         overlay && "cursor-grabbing border-(--tk-accent)/60 shadow-(--tk-shadow-card-hover)",

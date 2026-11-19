@@ -31,6 +31,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { exportFullSystem, setupDailyBackup } from "@/lib/system-export";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { APP_NAV, isNavItemActive } from "@/components/layout/nav-config";
@@ -388,6 +389,7 @@ export function AppShell({
   );
 
   return (
+    <TooltipProvider delayDuration={350}>
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <aside
         className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex ${
@@ -523,6 +525,7 @@ export function AppShell({
       </main>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
+    </TooltipProvider>
   );
 }
 

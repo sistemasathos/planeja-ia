@@ -1,9 +1,25 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Archive,
-  ArrowDown,
-  ArrowUp,
+  GripVertical,
   Layers,
   ListChecks,
   Pencil,
@@ -24,6 +40,7 @@ import {
   useTarefas,
 } from "@/features/tarefas/hooks";
 import { PASSO_POSICAO, corValida, posicaoEntre, type Etapa } from "@/features/tarefas/lib";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { notify } from "@/lib/notify";
 import { routeHead } from "@/lib/utils/route-head";
@@ -94,21 +111,32 @@ function Page() {
     }
   }
 
-  async function mover(etapa: Etapa, direcao: -1 | 1) {
-    const i = ativas.findIndex((e) => e.id === etapa.id);
-    const destino = i + direcao;
-    if (i < 0 || destino < 0 || destino >= ativas.length) return;
-    const vizinho = ativas[destino];
-    const antes = direcao < 0 ? ativas[destino - 1] : vizinho;
-    const depois = direcao < 0 ? vizinho : ativas[destino + 1];
+  const sensores = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  async function aoSoltar(e: DragEndEvent) {
+    if (atualizarEtapa.isPending) return;
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = ativas.findIndex((etapa) => etapa.id === active.id);
+    const to = ativas.findIndex((etapa) => etapa.id === over.id);
+    if (from < 0 || to < 0) return;
+    const ordem = [...ativas];
+    const [item] = ordem.splice(from, 1);
+    if (!item) return;
+    ordem.splice(to, 0, item);
+    const i = ordem.findIndex((etapa) => etapa.id === item.id);
     try {
       await atualizarEtapa.mutateAsync({
-        id: etapa.id,
-        patch: { posicao: posicaoEntre(antes?.posicao, depois?.posicao) },
+        id: item.id,
+        patch: { posicao: posicaoEntre(ordem[i - 1]?.posicao, ordem[i + 1]?.posicao) },
       });
-    } catch (e) {
+    } catch (err) {
       notify.error("Não foi possível reordenar", {
-        description: e instanceof Error ? e.message : undefined,
+        description: err instanceof Error ? err.message : undefined,
       });
     }
   }
@@ -201,55 +229,24 @@ function Page() {
             }
           />
         ) : (
-          <ul className="flex flex-col gap-2">
-            {ativas.map((etapa, i) => (
-              <li
-                key={etapa.id}
-                className="flex flex-wrap items-center gap-3 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) px-3 py-2.5"
-              >
-                <span
-                  className="size-3 shrink-0 rounded-full"
-                  style={{ background: corValida(etapa.cor) }}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-(--tk-text)">
-                  {etapa.nome}
-                </span>
-                <span className="text-[12px] text-(--tk-text-3)">{contagem.get(etapa.id) ?? 0}</span>
-                {podeEditar && (
-                  <span className="flex flex-wrap items-center gap-1">
-                    <TkButton variant="tertiary" size="sm" onClick={() => void mover(etapa, -1)} disabled={i === 0}>
-                      <ArrowUp /> Subir
-                    </TkButton>
-                    <TkButton
-                      variant="tertiary"
-                      size="sm"
-                      onClick={() => void mover(etapa, 1)}
-                      disabled={i === ativas.length - 1}
-                    >
-                      <ArrowDown /> Descer
-                    </TkButton>
-                    <TkButton variant="tertiary" size="sm" onClick={() => setCamposEtapa(etapa)}>
-                      <ListChecks /> Campos
-                    </TkButton>
-                    <TkButton
-                      variant="tertiary"
-                      size="sm"
-                      onClick={() => setDialogo({ aberto: true, etapa })}
-                    >
-                      <Pencil /> Editar
-                    </TkButton>
-                    <TkButton variant="tertiary" size="sm" onClick={() => void arquivar(etapa)}>
-                      <Archive /> Arquivar
-                    </TkButton>
-                    <TkButton variant="danger" size="sm" onClick={() => void excluir(etapa)}>
-                      <Trash2 /> Excluir
-                    </TkButton>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={(e) => void aoSoltar(e)}>
+            <SortableContext items={ativas.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+              <ul className="flex flex-col gap-2">
+                {ativas.map((etapa) => (
+                  <EtapaLinha
+                    key={etapa.id}
+                    etapa={etapa}
+                    quantidade={contagem.get(etapa.id) ?? 0}
+                    podeEditar={podeEditar}
+                    onCampos={() => setCamposEtapa(etapa)}
+                    onEditar={() => setDialogo({ aberto: true, etapa })}
+                    onArquivar={() => void arquivar(etapa)}
+                    onExcluir={() => void excluir(etapa)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
 
         {arquivadas.length > 0 && (
@@ -286,5 +283,69 @@ function Page() {
       <CamposDialog etapa={camposEtapa} campos={camposQ.data ?? []} onFechar={() => setCamposEtapa(null)} />
       {confirmDialog}
     </AppShell>
+  );
+}
+
+function EtapaLinha({
+  etapa,
+  quantidade,
+  podeEditar,
+  onCampos,
+  onEditar,
+  onArquivar,
+  onExcluir,
+}: {
+  etapa: Etapa;
+  quantidade: number;
+  podeEditar: boolean;
+  onCampos: () => void;
+  onEditar: () => void;
+  onArquivar: () => void;
+  onExcluir: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: etapa.id, disabled: !podeEditar });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "flex flex-wrap items-center gap-3 rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-card) px-3 py-2.5",
+        isDragging && "opacity-70",
+      )}
+    >
+      {podeEditar && (
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          className="grid size-8 shrink-0 cursor-grab place-items-center rounded-lg text-(--tk-text-3) hover:bg-(--tk-neutral-bg) hover:text-(--tk-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45 active:cursor-grabbing"
+          aria-label={`Reordenar ${etapa.nome}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" aria-hidden />
+        </button>
+      )}
+      <span className="size-3 shrink-0 rounded-full" style={{ background: corValida(etapa.cor) }} aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-(--tk-text)">{etapa.nome}</span>
+      <span className="text-[12px] text-(--tk-text-3)">{quantidade}</span>
+      {podeEditar && (
+        <span className="flex flex-wrap items-center gap-1">
+          <TkButton variant="tertiary" size="sm" onClick={onCampos}>
+            <ListChecks /> Campos
+          </TkButton>
+          <TkButton variant="tertiary" size="sm" onClick={onEditar}>
+            <Pencil /> Editar
+          </TkButton>
+          <TkButton variant="tertiary" size="sm" onClick={onArquivar}>
+            <Archive /> Arquivar
+          </TkButton>
+          <TkButton variant="danger" size="sm" onClick={onExcluir}>
+            <Trash2 /> Excluir
+          </TkButton>
+        </span>
+      )}
+    </li>
   );
 }

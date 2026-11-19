@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layers, Plus, RefreshCw } from "lucide-react";
 import "@/features/tarefas/tarefas.css";
 import { routeHead } from "@/lib/utils/route-head";
@@ -12,8 +12,14 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { notify } from "@/lib/notify";
 import { useSecretariasOpcoes } from "@/features/perfil/hooks";
@@ -71,6 +77,9 @@ import {
   tkDialogDescription,
   tkDialogTitle,
   tkInput,
+  tkMenu,
+  tkMenuItem,
+  tkSelect,
 } from "@/features/tarefas/components/ui";
 
 type TarefasSearch = {
@@ -456,14 +465,6 @@ function Page() {
     [campos, criarTarefa, etapas, navigate, pedirAvanco, pedirTramitacao, posicaoFinal, qc],
   );
 
-  const criar = useCallback(
-    async (etapaId: string, titulo: string) => {
-      const nova = await criarRegistro(etapaId, titulo);
-      if (!nova) return false;
-    },
-    [criarRegistro],
-  );
-
   const mover = useCallback(
     (input: MoverTarefaInput) => {
       const falha = (e: unknown) =>
@@ -532,7 +533,6 @@ function Page() {
 
   return (
     <AppShell fill>
-      <TooltipProvider delayDuration={350}>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
           <header className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 max-w-3xl space-y-1.5">
@@ -644,7 +644,6 @@ function Page() {
               lista={search.vista === "lista"}
               onMover={mover}
               onAbrir={abrirTarefa}
-              onCriar={criar}
             />
           )}
         </div>
@@ -663,16 +662,15 @@ function Page() {
 
         <NovaTarefaDialog
           aberto={novaTarefaAberta}
+          etapas={etapasAtivas}
           onFechar={() => setNovaTarefaAberta(false)}
-          onCriar={async (titulo, dataInclusao) => {
-            const pauta =
-              etapasAtivas.find((e) => /pauta/i.test(e.nome)) ?? etapasAtivas[0];
-            if (!pauta) {
-              notify.error("Cadastre a etapa Pauta antes de criar a demanda");
+          onCriar={async (titulo, dataInclusao, etapaId) => {
+            if (!etapaId) {
+              notify.error("Cadastre uma etapa antes de criar a demanda");
               return;
             }
             try {
-              const nova = await criarRegistro(pauta.id, titulo, dataInclusao);
+              const nova = await criarRegistro(etapaId, titulo, dataInclusao);
               if (!nova) return;
               setNovaTarefaAberta(false);
               setPerguntaProcesso(nova.id);
@@ -754,7 +752,6 @@ function Page() {
             encerrarAvanco(mesclarIdentificadores(avanco.valores, form));
           }}
         />
-      </TooltipProvider>
     </AppShell>
   );
 }
@@ -765,23 +762,36 @@ function hojeLocal(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function etapaPadrao(etapas: Etapa[]): string {
+  return (etapas.find((e) => /pauta/i.test(e.nome)) ?? etapas[0])?.id ?? "";
+}
+
 function NovaTarefaDialog({
   aberto,
   salvando,
+  etapas,
   onFechar,
   onCriar,
 }: {
   aberto: boolean;
   salvando: boolean;
+  etapas: Etapa[];
   onFechar: () => void;
-  onCriar: (titulo: string, dataInclusao: string) => void | Promise<void>;
+  onCriar: (titulo: string, dataInclusao: string, etapaId: string) => void | Promise<void>;
 }) {
   const [titulo, setTitulo] = useState("");
   const [dataInclusao, setDataInclusao] = useState(hojeLocal);
+  const [etapaId, setEtapaId] = useState("");
+
+  useEffect(() => {
+    if (!aberto) return;
+    setEtapaId(etapaPadrao(etapas));
+  }, [aberto, etapas]);
 
   function fechar() {
     setTitulo("");
     setDataInclusao(hojeLocal());
+    setEtapaId(etapaPadrao(etapas));
     onFechar();
   }
 
@@ -793,7 +803,7 @@ function NovaTarefaDialog({
           title={<DialogTitle className={tkDialogTitle}>Nova tarefa</DialogTitle>}
           description={
             <DialogDescription className={tkDialogDescription}>
-              A demanda entra na Pauta. Processo e documentos podem ser vinculados depois.
+              A demanda entra na etapa escolhida. Processo e documentos podem ser vinculados depois.
             </DialogDescription>
           }
         />
@@ -801,8 +811,8 @@ function NovaTarefaDialog({
           className="space-y-5"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!titulo.trim() || !dataInclusao || salvando) return;
-            void onCriar(titulo.trim(), dataInclusao);
+            if (!titulo.trim() || !dataInclusao || !etapaId || salvando) return;
+            void onCriar(titulo.trim(), dataInclusao, etapaId);
           }}
         >
           <TkField label="Título" htmlFor="nt-titulo">
@@ -826,11 +836,29 @@ function NovaTarefaDialog({
               className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
             />
           </TkField>
+          <TkField label="Etapa" htmlFor="nt-etapa">
+            <Select value={etapaId} onValueChange={setEtapaId} disabled={salvando || etapas.length === 0}>
+              <SelectTrigger id="nt-etapa" className={tkSelect}>
+                <SelectValue placeholder="Selecione a etapa" />
+              </SelectTrigger>
+              <SelectContent className={cn(tkMenu, "max-h-80")}>
+                {etapas.map((e) => (
+                  <SelectItem key={e.id} value={e.id} className={tkMenuItem}>
+                    {e.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </TkField>
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <TkButton variant="secondary" onClick={fechar} disabled={salvando}>
               Cancelar
             </TkButton>
-            <TkButton type="submit" variant="primary" disabled={!titulo.trim() || !dataInclusao || salvando}>
+            <TkButton
+              type="submit"
+              variant="primary"
+              disabled={!titulo.trim() || !dataInclusao || !etapaId || salvando}
+            >
               Salvar tarefa
             </TkButton>
           </div>

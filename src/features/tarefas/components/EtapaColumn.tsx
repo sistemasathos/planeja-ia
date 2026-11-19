@@ -1,14 +1,13 @@
-import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CircleCheckBig, Inbox, Plus, SearchX } from "lucide-react";
+import { CircleCheckBig, Inbox, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LIMITE_POR_COLUNA, corTextoSobre, corValida, type Etapa, type Tarefa } from "../lib";
+import { LIMITE_POR_COLUNA, corValida, type Etapa, type Tarefa } from "../lib";
 import { SortableTarefaCard, type CardContexto } from "./TarefaCard";
-import { TkButton, TkCount, TkTooltip, tkInput } from "./ui";
+import { TkButton, TkCount, TkTooltip } from "./ui";
 
 /** Largura adaptável das colunas (também usada no esqueleto de carregamento). */
-export const COLUNA_LARGURA = "w-[clamp(296px,22vw,320px)]";
+export const COLUNA_LARGURA = "w-[clamp(250px,18vw,280px)]";
 
 type Props = {
   etapa: Etapa;
@@ -21,7 +20,6 @@ type Props = {
   selecionadaId?: string;
   onAbrir: (id: string) => void;
   onVerMais: (etapaId: string) => void;
-  onCriar: (etapaId: string, titulo: string) => Promise<void | false> | void | false;
 };
 
 export function EtapaColumn({
@@ -35,54 +33,27 @@ export function EtapaColumn({
   selecionadaId,
   onAbrir,
   onVerMais,
-  onCriar,
 }: Props) {
   const cor = corValida(etapa.cor);
   const { setNodeRef, isOver } = useDroppable({
     id: `col:${etapa.id}`,
     data: { type: "coluna", etapaId: etapa.id },
   });
-  const [adicionando, setAdicionando] = useState(false);
-  const [titulo, setTitulo] = useState("");
-  const [salvando, setSalvando] = useState(false);
   const visiveis = tarefas.slice(0, limite);
   const restantes = tarefas.length - visiveis.length;
   const filtrada = tarefas.length !== totalSemFiltro;
-
-  async function confirmar() {
-    const t = titulo.trim();
-    if (!t || salvando) return;
-    setSalvando(true);
-    try {
-      const criada = await onCriar(etapa.id, t);
-      if (criada !== false) {
-        setTitulo("");
-        setAdicionando(false);
-      }
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  function cancelar() {
-    setAdicionando(false);
-    setTitulo("");
-  }
 
   return (
     <section
       aria-label={`Etapa ${etapa.nome}`}
       className={cn(
         COLUNA_LARGURA,
-        "flex h-full max-h-full shrink-0 flex-col overflow-hidden rounded-(--tk-radius-column) border border-(--tk-border) bg-(--tk-column) transition-colors",
+        "flex h-auto max-h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-(--tk-radius-column) border border-(--tk-border) bg-(--tk-column) transition-colors",
         isOver && "border-(--tk-accent)/50",
       )}
     >
-      <div className="h-1.5 w-full shrink-0" style={{ background: cor }} aria-hidden />
-      <header
-        className="flex h-12 shrink-0 items-center gap-2 px-3"
-        style={{ background: `color-mix(in srgb, ${cor} 14%, var(--tk-column))` }}
-      >
+      <div className="h-[5px] w-full shrink-0" style={{ background: cor }} aria-hidden />
+      <header className="flex h-9 shrink-0 items-center gap-2 bg-(--tk-column) px-2.5">
         <span className="size-2 shrink-0 rounded-full" style={{ background: cor }} aria-hidden />
         <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-(--tk-text)" title={etapa.nome}>
           {etapa.nome}
@@ -98,61 +69,16 @@ export function EtapaColumn({
               ? `${tarefas.length} de ${totalSemFiltro} com os filtros atuais`
               : `${tarefas.length}`
           }
-          style={{ background: `color-mix(in srgb, ${cor} 18%, var(--tk-card))` }}
         >
           {filtrada ? `${tarefas.length}/${totalSemFiltro}` : tarefas.length}
         </TkCount>
       </header>
 
-      {podeEditar && (
-        <div className="shrink-0 px-2.5 pt-2.5">
-          {adicionando ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void confirmar();
-              }}
-              className="flex flex-col gap-2"
-            >
-              <input
-                autoFocus
-                value={titulo}
-                maxLength={300}
-                placeholder="Título da demanda"
-                onChange={(e) => setTitulo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") cancelar();
-                }}
-                aria-label={`Título da nova demanda em ${etapa.nome}`}
-                className={tkInput}
-              />
-              <div className="flex gap-2">
-                <TkButton type="submit" variant="primary" size="sm" disabled={!titulo.trim() || salvando}>
-                  Adicionar
-                </TkButton>
-                <TkButton variant="tertiary" size="sm" onClick={cancelar}>
-                  Cancelar
-                </TkButton>
-              </div>
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAdicionando(true)}
-              className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-(--tk-radius-card) text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--tk-accent)/45"
-              style={{ background: cor, color: corTextoSobre(cor) }}
-            >
-              <Plus className="size-4" aria-hidden />
-              Nova demanda
-            </button>
-          )}
-        </div>
-      )}
-
       <div
         ref={setNodeRef}
         className={cn(
-          "tk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-2.5 pt-2.5",
+          "tk-scroll flex flex-col gap-2 overflow-y-auto px-2.5 pb-2 pt-2",
+          tarefas.length === 0 ? "min-h-[160px]" : "min-h-0 flex-auto",
           isOver && "bg-(--tk-accent-soft)/60",
         )}
       >
@@ -187,8 +113,8 @@ export function EtapaColumn({
             ))}
           </SortableContext>
         )}
-        {tarefas.length === 0 && !adicionando && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-(--tk-radius-card) border border-dashed border-(--tk-border-strong) px-4 py-8 text-center">
+        {tarefas.length === 0 && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-(--tk-radius-card) border border-dashed border-(--tk-border-strong) px-3 py-4 text-center">
             {totalSemFiltro === 0 ? (
               <Inbox className="size-5 text-(--tk-text-3)" aria-hidden />
             ) : (

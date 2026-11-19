@@ -109,15 +109,15 @@ export function FichaTramitacao({
   const marcos = linhaDoTempo(etapas, eventos.data ?? [], etapaAtualId, inclusaoEm ?? "");
 
   return (
-    <div className="mt-8 space-y-8 border-t border-(--tk-border) pt-6">
-      <TkSection title="Dados da contratação" description="Números e datas gerados ao longo da tramitação.">
-        <div className="grid gap-4 sm:grid-cols-2">
+    <div className="flex flex-col gap-3">
+      <TkSection caixa title="Dados da contratação" description="Números e datas gerados ao longo da tramitação.">
+        <div className="grid gap-2 sm:grid-cols-2">
           {DOCUMENTOS_FIXOS.map((def) => {
             const doc = porChave.get(def.chave);
             return (
               <div
                 key={def.chave}
-                className="space-y-3 rounded-(--tk-radius-control) border border-(--tk-border) p-3"
+                className="space-y-2 rounded-(--tk-radius-control) border border-(--tk-border) bg-(--tk-panel) p-2.5"
               >
                 <p className="text-[14px] font-medium text-(--tk-text)">{def.titulo}</p>
                 <TkField label="Número" htmlFor={`doc-${def.chave}-n`}>
@@ -131,7 +131,7 @@ export function FichaTramitacao({
                       if ((doc?.numero ?? "") === e.target.value.trim()) return;
                       void gravarFixo(def.chave, def.titulo, { numero: e.target.value });
                     }}
-                    className={tkInput}
+                    className={cn(tkInput, "h-10")}
                   />
                 </TkField>
                 <TkField label="Data" htmlFor={`doc-${def.chave}-d`}>
@@ -145,7 +145,7 @@ export function FichaTramitacao({
                       if ((doc?.data ?? "") === e.target.value) return;
                       void gravarFixo(def.chave, def.titulo, { data: e.target.value });
                     }}
-                    className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+                    className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
                   />
                 </TkField>
                 {def.horario && (
@@ -161,7 +161,7 @@ export function FichaTramitacao({
                         if (atual === e.target.value) return;
                         void gravarFixo(def.chave, def.titulo, { horario: e.target.value });
                       }}
-                      className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+                      className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
                     />
                   </TkField>
                 )}
@@ -208,16 +208,16 @@ export function FichaTramitacao({
         {extra && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <TkField label="Identificação" htmlFor="extra-titulo">
-              <input id="extra-titulo" value={novo.titulo} maxLength={80} onChange={(e) => setNovo({ ...novo, titulo: e.target.value })} className={tkInput} />
+              <input id="extra-titulo" value={novo.titulo} maxLength={80} onChange={(e) => setNovo({ ...novo, titulo: e.target.value })} className={cn(tkInput, "h-10")} />
             </TkField>
             <TkField label="Número" htmlFor="extra-numero">
-              <input id="extra-numero" value={novo.numero} maxLength={80} onChange={(e) => setNovo({ ...novo, numero: e.target.value })} className={tkInput} />
+              <input id="extra-numero" value={novo.numero} maxLength={80} onChange={(e) => setNovo({ ...novo, numero: e.target.value })} className={cn(tkInput, "h-10")} />
             </TkField>
             <TkField label="Data" htmlFor="extra-data">
-              <input id="extra-data" type="date" value={novo.data} onChange={(e) => setNovo({ ...novo, data: e.target.value })} className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")} />
+              <input id="extra-data" type="date" value={novo.data} onChange={(e) => setNovo({ ...novo, data: e.target.value })} className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")} />
             </TkField>
             <TkField label="Link" htmlFor="extra-link">
-              <input id="extra-link" type="url" value={novo.link_url} placeholder="https://..." onChange={(e) => setNovo({ ...novo, link_url: e.target.value })} className={tkInput} />
+              <input id="extra-link" type="url" value={novo.link_url} placeholder="https://..." onChange={(e) => setNovo({ ...novo, link_url: e.target.value })} className={cn(tkInput, "h-10")} />
             </TkField>
             <TkField label="Observação" htmlFor="extra-obs" className="sm:col-span-2">
               <textarea id="extra-obs" rows={2} value={novo.observacao} onChange={(e) => setNovo({ ...novo, observacao: e.target.value })} className={tkTextarea} />
@@ -234,7 +234,7 @@ export function FichaTramitacao({
 
       {vinculos}
 
-      <TkSection title="Contratos" description="Contratos importados e vinculados a esta demanda.">
+      <TkSection caixa title="Contratos" description="Contratos importados e vinculados a esta demanda.">
         {contratos.data?.length ? (
           <ul className="space-y-2">
             {contratos.data.map((c) => (
@@ -257,7 +257,7 @@ export function FichaTramitacao({
       </TkSection>
 
       {mostraFases && (
-        <TkSection title="Fases do julgamento" description="Situação de cada fase, sem criar novas colunas no quadro.">
+        <TkSection caixa title="Fases do julgamento" description="Situação de cada fase, sem criar novas colunas no quadro.">
           <ul className="space-y-3">
             {FASES_JULGAMENTO.map((fase, i) => {
               const atual = fases.data?.find((f) => f.chave === fase.chave);
@@ -278,7 +278,7 @@ export function FichaTramitacao({
                         posicao: i,
                       })
                     }
-                    className={tkSelect}
+                    className={cn(tkSelect, "h-10")}
                   >
                     {FASE_SITUACOES.map((s) => (
                       <option key={s.value} value={s.value}>{s.label}</option>
@@ -300,7 +300,7 @@ export function FichaTramitacao({
                         posicao: i,
                       });
                     }}
-                    className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+                    className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
                   />
                 </li>
               );
@@ -309,7 +309,7 @@ export function FichaTramitacao({
         </TkSection>
       )}
 
-      <TkSection title="Linha do tempo" description="Entrada em cada etapa da tramitação.">
+      <TkSection caixa title="Linha do tempo" description="Entrada em cada etapa da tramitação.">
         <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {marcos.map((m) => (
             <li

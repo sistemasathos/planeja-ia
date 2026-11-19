@@ -399,7 +399,7 @@ export function TarefaSheet({
         }}
         className="flex w-full flex-col gap-0 overflow-hidden border-(--tk-border-strong) bg-(--tk-panel) p-0 text-(--tk-text) shadow-(--tk-shadow-panel) focus:outline-none sm:w-[min(90vw,720px)] sm:max-w-none dark:border-(--tk-border-strong) dark:bg-(--tk-panel)"
       >
-        <header className="shrink-0 border-b border-(--tk-border) px-5 py-4 sm:px-6">
+        <header className="shrink-0 border-b border-(--tk-border) px-4 py-3">
           <TkPanelHeader
             onClose={() => void tentarFechar()}
             closeLabel="Fechar painel"
@@ -419,7 +419,7 @@ export function TarefaSheet({
         </header>
 
         {draft && tarefa && (
-          <div className="tk-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-10 pt-5 sm:px-6">
+          <div className="tk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3">
             {externo && (
               <div
                 role="alert"
@@ -435,10 +435,8 @@ export function TarefaSheet({
               </div>
             )}
 
-            <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
-              <h3 className="text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
-                Identificação
-              </h3>
+            <TkSection caixa title="Identificação">
+            <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
               <TkField label="Título" htmlFor="t-titulo">
                 <input
                   id="t-titulo"
@@ -446,7 +444,7 @@ export function TarefaSheet({
                   maxLength={300}
                   disabled={desabilitado}
                   onChange={(e) => set("titulo", e.target.value)}
-                  className={tkInput}
+                  className={cn(tkInput, "h-10")}
                 />
               </TkField>
               <TkField label="Data de inclusão" htmlFor="t-inclusao">
@@ -456,13 +454,14 @@ export function TarefaSheet({
                   value={draft.data_inclusao}
                   disabled={desabilitado}
                   onChange={(e) => set("data_inclusao", e.target.value)}
-                  className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+                  className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
                 />
               </TkField>
+            </div>
+            </TkSection>
 
-              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
-                Classificação
-              </h3>
+            <TkSection caixa title="Classificação">
+            <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
               <TkField label="Modalidade" htmlFor="t-modalidade">
                 <input
                   id="t-modalidade"
@@ -472,7 +471,7 @@ export function TarefaSheet({
                   placeholder="Selecione ou digite"
                   disabled={desabilitado}
                   onChange={(e) => set("modalidade", e.target.value)}
-                  className={tkInput}
+                  className={cn(tkInput, "h-10")}
                 />
                 <datalist id="t-modalidades">
                   {modalidades.map((m) => (
@@ -489,7 +488,7 @@ export function TarefaSheet({
                   placeholder="Selecione ou digite"
                   disabled={desabilitado}
                   onChange={(e) => set("tipo", e.target.value)}
-                  className={tkInput}
+                  className={cn(tkInput, "h-10")}
                 />
                 <datalist id="t-tipos">
                   {tipos.map((m) => (
@@ -513,7 +512,7 @@ export function TarefaSheet({
                 }
               >
                 {draft.todas_secretarias ? (
-                  <p className="flex h-11 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
+                  <p className="flex h-10 items-center rounded-(--tk-radius-control) border border-dashed border-(--tk-border-strong) px-3 text-[14px] text-(--tk-text-2)">
                     A tarefa abrange todas as secretarias.
                   </p>
                 ) : (
@@ -524,23 +523,24 @@ export function TarefaSheet({
                     onChange={(v) => set("secretaria_ids", v)}
                     disabled={desabilitado}
                     placeholder="Selecionar secretarias"
-                    triggerClassName={cn(tkSelect, "h-auto min-h-11 py-1.5 hover:bg-(--tk-input) hover:text-(--tk-text)")}
+                    triggerClassName={cn(tkSelect, "h-auto min-h-10 py-1.5 hover:bg-(--tk-input) hover:text-(--tk-text)")}
                     contentClassName={cn(tkMenu, "p-0")}
                     itemClassName={tkMenuItem}
                   />
                 )}
               </TkField>
+            </div>
+            </TkSection>
 
-              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
-                Acompanhamento
-              </h3>
+            <TkSection caixa title="Acompanhamento">
+            <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
               <TkField label="Etapa" htmlFor="t-etapa">
                 <Select
                   value={draft.etapa_id}
                   onValueChange={(v) => set("etapa_id", v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger id="t-etapa" className={tkSelect}>
+                  <SelectTrigger id="t-etapa" className={cn(tkSelect, "h-10")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className={tkMenu}>
@@ -560,7 +560,7 @@ export function TarefaSheet({
                   onValueChange={(v) => set("situacao", v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger id="t-situacao" className={tkSelect}>
+                  <SelectTrigger id="t-situacao" className={cn(tkSelect, "h-10")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className={tkMenu}>
@@ -579,7 +579,7 @@ export function TarefaSheet({
                   onValueChange={(v) => set("responsavel_id", v === "__nenhum__" ? null : v)}
                   disabled={desabilitado}
                 >
-                  <SelectTrigger id="t-responsavel" className={tkSelect}>
+                  <SelectTrigger id="t-responsavel" className={cn(tkSelect, "h-10")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className={cn(tkMenu, "max-h-80")}>
@@ -595,14 +595,14 @@ export function TarefaSheet({
                   </SelectContent>
                 </Select>
               </TkField>
+            </div>
+            </TkSection>
 
-              <h3 className="pt-2 text-[13px] font-medium tracking-wide text-(--tk-text-3) sm:col-span-2">
-                Observações / andamento
-              </h3>
-              <TkField label="Lembrete do andamento" htmlFor="t-obs" className="sm:col-span-2">
+            <TkSection caixa title="Observações / andamento">
+              <TkField label="Lembrete do andamento" htmlFor="t-obs">
                 <textarea
                   id="t-obs"
-                  rows={4}
+                  rows={3}
                   maxLength={10000}
                   value={draft.observacao}
                   disabled={desabilitado}
@@ -614,7 +614,7 @@ export function TarefaSheet({
                   )}
                 />
               </TkField>
-            </div>
+            </TkSection>
 
             <FichaTramitacao
               tarefaId={tarefa.id}
@@ -627,8 +627,8 @@ export function TarefaSheet({
                 void navigate({ to: "/importar-contratos", search: { tarefa: tarefa.id } })
               }
               vinculos={
-                <TkSection title="Vínculos" description="Processo administrativo e acesso ao M2A.">
-                  <div className="grid gap-4">
+                <TkSection caixa title="Vínculos" description="Processo administrativo e acesso ao M2A.">
+                  <div className="grid gap-2">
                     <TkField label="Processo administrativo" htmlFor="t-processo">
                       <ProcessoPicker
                         id="t-processo"
@@ -648,7 +648,7 @@ export function TarefaSheet({
                           maxLength={2000}
                           disabled={desabilitado}
                           onChange={(e) => set("link_url", e.target.value)}
-                          className={cn(tkInput, "pr-[5.25rem]")}
+                          className={cn(tkInput, "h-10 pr-[5.25rem]")}
                         />
                         <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
                           {linkValido ? (
@@ -686,11 +686,11 @@ export function TarefaSheet({
 
             {camposDaEtapa.length > 0 && (
               <TkSection
+                caixa
                 title="Campos da etapa"
                 description={etapaAtual ? `Informações específicas de ${etapaAtual.nome}.` : undefined}
-                className="mt-8 border-t border-(--tk-border) pt-6"
               >
-                <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
                   {camposDaEtapa.map((c) => (
                     <CampoInput
                       key={c.id}
@@ -705,13 +705,13 @@ export function TarefaSheet({
             )}
 
             {camposOutras.length > 0 && (
-              <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
+              <details className="group overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) bg-(--tk-panel-muted)">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-medium text-(--tk-text) [&::-webkit-details-marker]:hidden">
                   <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
                   Campos de outras etapas
                   <span className="text-[12px] font-normal text-(--tk-text-3)">({camposOutras.length})</span>
                 </summary>
-                <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-5 border-t border-(--tk-border) p-4 sm:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 border-t border-(--tk-border) p-3 sm:grid-cols-2">
                   {camposOutras.map((c) => (
                     <CampoInput
                       key={c.id}
@@ -737,7 +737,7 @@ export function TarefaSheet({
         )}
 
         {tarefa && (
-          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--tk-border) bg-(--tk-panel) px-5 py-3.5 sm:px-6">
+          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--tk-border) bg-(--tk-panel) px-4 py-2.5">
             {podeEditar && (
               <TkButton variant="danger" onClick={() => void remover()} disabled={excluir.isPending}>
                 {excluir.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
@@ -847,7 +847,7 @@ function CampoInput({
           onValueChange={(v) => onChange(v === "__vazio__" ? "" : v)}
           disabled={disabled}
         >
-          <SelectTrigger id={id} className={tkSelect}>
+          <SelectTrigger id={id} className={cn(tkSelect, "h-10")}>
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
           <SelectContent className={cn(tkMenu, "max-h-80")}>
@@ -884,7 +884,7 @@ function CampoInput({
           value={valor}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className={cn(tkInput, "[color-scheme:light] dark:[color-scheme:dark]")}
+          className={cn(tkInput, "h-10 [color-scheme:light] dark:[color-scheme:dark]")}
         />
       )}
     </TkField>
@@ -932,9 +932,9 @@ function AnexosSection({ tarefaId, podeEditar }: { tarefaId: string; podeEditar:
 
   return (
     <TkSection
+      caixa
       title="Anexos"
       description={`Até ${MAX_ANEXO_BYTES / 1024 / 1024} MB por arquivo.`}
-      className="mt-8 border-t border-(--tk-border) pt-6"
       action={
         podeEditar ? (
           <>
@@ -1084,13 +1084,13 @@ function HistoricoSection({
   const { data: eventos = [] } = useEventos(tarefaId);
   if (eventos.length === 0) return null;
   return (
-    <details className="group mt-6 rounded-(--tk-radius-control) border border-(--tk-border)">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-[14px] font-medium text-(--tk-text) [&::-webkit-details-marker]:hidden">
+    <details className="group overflow-hidden rounded-(--tk-radius-card) border border-(--tk-border) border-t-[3px] border-t-(--tk-accent) bg-(--tk-panel-muted)">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 text-[13px] font-semibold text-(--tk-text) [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-4 text-(--tk-text-3) transition-transform group-open:rotate-90" aria-hidden />
         Histórico
         <span className="text-[12px] font-normal text-(--tk-text-3)">({eventos.length})</span>
       </summary>
-      <ol className="space-y-2.5 border-t border-(--tk-border) px-4 py-3 text-[13px]">
+      <ol className="space-y-2 border-t border-(--tk-border) px-3 py-2.5 text-[13px]">
         {eventos.map((ev) => {
           const numeros = [textoDocumentos(ev.detalhes), textoIdentificadores(ev.detalhes)]
             .filter(Boolean)
